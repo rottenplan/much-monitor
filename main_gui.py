@@ -38,6 +38,7 @@ class CalibrationApp:
         self.root = root
         self.root.title("MUCH MONITOR PRO")
         self.root.geometry("600x750")
+        self.root.minsize(550, 700) # Prevents making the window too small
         self.root.configure(bg="#121212") # Deep Black Background
         
         self.logic = CalibrationLogic()
@@ -72,17 +73,17 @@ class CalibrationApp:
         style.configure("TCombobox", fieldbackground="#0A0A0A", background="#1E1E1E", foreground="#FFFFFF", arrowcolor="#FFFFFF", borderwidth=0)
         style.map("TCombobox", fieldbackground=[('readonly', "#0F0F0F")], foreground=[('readonly', 'white')])
 
-        self.main_container = tk.Frame(self.root, bg="#080808", padx=40, pady=40)
+        self.main_container = tk.Frame(self.root, bg="#080808", padx=40, pady=25)
         self.main_container.pack(fill=tk.BOTH, expand=True)
 
         # 2. BRANDING / HEADER
         header_frame = tk.Frame(self.main_container, bg="#080808")
-        header_frame.pack(fill="x", pady=(0, 40))
+        header_frame.pack(fill="x", pady=(0, 20))
         
-        title_label = tk.Label(header_frame, text="MUCH MONITOR", font=("Inter", 26, "bold"), fg="#FFFFFF", bg="#080808")
+        title_label = tk.Label(header_frame, text="MUCH MONITOR", font=("Inter", 32, "bold"), fg="#FFFFFF", bg="#080808")
         title_label.pack(anchor="w")
         
-        sub_title = tk.Label(header_frame, text="PRO COLOR ENGINE v2.0", font=("Inter", 10, "bold"), fg="#00D1FF", bg="#080808")
+        sub_title = tk.Label(header_frame, text="PRO COLOR ENGINE v2.0", font=("Inter", 12, "bold"), fg="#00D1FF", bg="#080808")
         sub_title.pack(anchor="w", pady=(0, 5))
         
         # Subtle accent line
@@ -92,13 +93,13 @@ class CalibrationApp:
         cam_card = tk.Frame(self.main_container, bg="#121212", padx=25, pady=25)
         cam_card.pack(fill="x", pady=10)
         
-        tk.Label(cam_card, text="KAMERA SENSOR", font=("Inter", 9, "bold"), fg="#555555", bg="#121212").pack(anchor="w", pady=(0, 15))
+        tk.Label(cam_card, text="KAMERA SENSOR", font=("Inter", 11, "bold"), fg="#555555", bg="#121212").pack(anchor="w", pady=(0, 15))
         
         combo_row = tk.Frame(cam_card, bg="#121212")
         combo_row.pack(fill="x")
         
         self.cam_var = tk.StringVar()
-        self.cam_combo = ttk.Combobox(combo_row, textvariable=self.cam_var, state="readonly", font=("Inter", 11))
+        self.cam_combo = ttk.Combobox(combo_row, textvariable=self.cam_var, state="readonly", font=("Inter", 13))
         self.cam_combo.pack(side=tk.LEFT, fill="x", expand=True)
         
         # Custom Tiny Refresh Button using ModernButton logic internally but smaller
@@ -106,7 +107,7 @@ class CalibrationApp:
         self.refresh_btn.pack(side=tk.RIGHT, padx=(15, 0))
         self.refresh_btn.bind("<Button-1>", lambda e: self.refresh_cameras())
 
-        self.status_cam_label = tk.Label(cam_card, text="Checking camera connectivity...", font=("Inter", 9), fg="#FFCC00", bg="#121212")
+        self.status_cam_label = tk.Label(cam_card, text="Checking camera connectivity...", font=("Inter", 11), fg="#FFCC00", bg="#121212")
         self.status_cam_label.pack(anchor="w", pady=(12, 0))
 
         # Mock Mode
@@ -122,21 +123,21 @@ class CalibrationApp:
         param_card = tk.Frame(self.main_container, bg="#121212", padx=25, pady=25)
         param_card.pack(fill="x", pady=10)
         
-        tk.Label(param_card, text="TARGET PARAMETER", font=("Inter", 9, "bold"), fg="#555555", bg="#121212").pack(anchor="w", pady=(0, 15))
+        tk.Label(param_card, text="TARGET PARAMETER", font=("Inter", 11, "bold"), fg="#555555", bg="#121212").pack(anchor="w", pady=(0, 15))
         
         grid = tk.Frame(param_card, bg="#121212")
         grid.pack(fill="x")
         grid.columnconfigure(1, weight=1)
         
         # White Point
-        tk.Label(grid, text="White Point", font=("Inter", 10), fg="#DDD", bg="#121212").grid(row=0, column=0, sticky="w", pady=8)
-        self.target_wp = ttk.Combobox(grid, values=["D65 (6500K)", "D50 (5000K)"], state="readonly", font=("Inter", 10))
+        tk.Label(grid, text="White Point", font=("Inter", 12), fg="#DDD", bg="#121212").grid(row=0, column=0, sticky="w", pady=8)
+        self.target_wp = ttk.Combobox(grid, values=["D65 (6500K)", "D50 (5000K)"], state="readonly", font=("Inter", 12))
         self.target_wp.current(0)
         self.target_wp.grid(row=0, column=1, sticky="ew", padx=(30, 0))
         
         # Gamma
-        tk.Label(grid, text="Gamma", font=("Inter", 10), fg="#DDD", bg="#121212").grid(row=1, column=0, sticky="w", pady=8)
-        self.target_gamma = ttk.Combobox(grid, values=["2.2 (SDR)", "2.4 (Video)"], state="readonly", font=("Inter", 10))
+        tk.Label(grid, text="Gamma", font=("Inter", 12), fg="#DDD", bg="#121212").grid(row=1, column=0, sticky="w", pady=8)
+        self.target_gamma = ttk.Combobox(grid, values=["2.2 (SDR)", "2.4 (Video)"], state="readonly", font=("Inter", 12))
         self.target_gamma.current(0)
         self.target_gamma.grid(row=1, column=1, sticky="ew", padx=(30, 0))
 
@@ -144,7 +145,7 @@ class CalibrationApp:
         tips_card = tk.Frame(self.main_container, bg="#0E0E0E", padx=20, pady=15)
         tips_card.pack(fill="x", pady=(20, 0))
         
-        tk.Label(tips_card, text="PRO TIPS: Redupkan lampu & bersihkan layar monitor.", font=("Inter", 9, "italic"), fg="#666", bg="#0E0E0E").pack()
+        tk.Label(tips_card, text="PRO TIPS: Redupkan lampu & bersihkan layar monitor.", font=("Inter", 11, "italic"), fg="#666", bg="#0E0E0E").pack()
 
         # 6. ACTION DASHBOARD
         action_frame = tk.Frame(self.main_container, bg="#080808")
@@ -154,7 +155,8 @@ class CalibrationApp:
             action_frame, 
             text="MULAI KALIBRASI PRO", 
             command=self.start_calibration,
-            bg="#007AFF"
+            bg="#007AFF",
+            font=("Inter", 14, "bold")
         )
         self.start_button.pack(fill="x", pady=(0, 10))
 
@@ -162,21 +164,55 @@ class CalibrationApp:
             action_frame,
             text="Launch StudioICC Companion",
             command=self.launch_menubar_helper,
-            bg="#181818", fg="#00D1FF", font=("Inter", 9, "bold"), pady=8
+            bg="#181818", fg="#00D1FF", font=("Inter", 11, "bold"), pady=8
         )
         self.menubar_btn.pack(fill="x")
 
 
     def launch_menubar_helper(self):
-        """Launches the standalone menu bar app as a background process."""
+        """Launches the standalone menu bar app and shows a premium workstation-grade alert."""
         import subprocess
         import sys
         try:
-            # Launch as a separate background process
             subprocess.Popen([sys.executable, "menubar_app.py"])
-            messagebox.showinfo("StudioICC Mode", "Menu Bar Helper sedang berjalan!\nCari ikon 'MuchCalib' di pojok kanan atas layar.")
+            
+            # Iteration 3: Glow-Top Premium Alert
+            alert = tk.Toplevel(self.root)
+            alert.overrideredirect(True)
+            alert.attributes("-topmost", True)
+            alert.configure(bg="#0F0F0F", highlightthickness=1, highlightbackground="#222")
+            
+            # Position
+            w, h = 380, 220
+            sx = (self.root.winfo_screenwidth() - w) // 2
+            sy = (self.root.winfo_screenheight() - h) // 2
+            alert.geometry(f"{w}x{h}+{sx}+{sy}")
+            
+            # 1. Glow Top Bar
+            glow_bar = tk.Frame(alert, height=4, bg="#00D1FF")
+            glow_bar.pack(fill="x")
+            
+            content = tk.Frame(alert, bg="#0F0F0F", padx=30, pady=25)
+            content.pack(fill="both", expand=True)
+            
+            # 2. Stylized Icon with glow effect (via color)
+            tk.Label(content, text="✦", font=("Inter", 36), fg="#00D1FF", bg="#0F0F0F").pack()
+            
+            # 3. Typography overhauls
+            tk.Label(content, text="STUDIO ICC ENGINE AKTIF", font=("Inter", 13, "bold"), fg="white", bg="#0F0F0F", pady=10).pack()
+            tk.Label(content, text="Ikon 'MuchCalib' kini muncul di menu bar\ndipojok kanan atas layar Anda.", font=("Inter", 11), fg="#888", bg="#0F0F0F", justify="center").pack()
+            
+            # 4. Interactive Footer Action
+            footer = tk.Frame(content, bg="#0F0F0F")
+            footer.pack(fill="x", side="bottom", pady=(20, 0))
+            
+            ModernButton(footer, text="SIAP", command=alert.destroy, bg="#1A1A1A", fg="#00D1FF", font=("Inter", 10, "bold"), pady=10).pack(fill="x")
+            
+            alert.grab_set()
+            alert.focus_force()
+            
         except Exception as e:
-            messagebox.showerror("Error", f"Gagal menjalankan Menu Bar Helper: {e}")
+            messagebox.showerror("Error", f"Gagal menjalankan Helper: {e}")
 
     def refresh_cameras(self):
         print("DEBUG: Refreshing cameras...")
@@ -482,7 +518,7 @@ class CalibrationApp:
         self._create_score_card(score_row, "PRO-CAL DELTA-E", f"{metrics['avg_corrected']:.1f}", corrected_color)
         
         # Description
-        tk.Label(content, text=metrics['description'], font=("Inter", 11), bg="#080808", fg="#AAA", wraplength=500, pady=30).pack()
+        tk.Label(content, text=metrics['description'], font=("Inter", 12), bg="#080808", fg="#888", wraplength=550, pady=30).pack()
 
         # --- Save Location Section ---
         save_frame = tk.LabelFrame(content, text="Lokasi Penyimpanan Profil", font=("Arial", 10, "bold"), bg="#080808", fg="#ccc", padx=10, pady=10)
