@@ -3,18 +3,30 @@ import AVFoundation
 
 def list_avfoundation_devices():
     print("--- AVFoundation Devices ---")
+    # Comprehensive list of video device types
     device_types = [
         "AVCaptureDeviceTypeBuiltInWideAngleCamera",
         "AVCaptureDeviceTypeExternalUnknown", 
-        "AVCaptureDeviceTypeContinuityCamera"
+        "AVCaptureDeviceTypeContinuityCamera",
+        "AVCaptureDeviceTypeBuiltInUltraWideCamera",
+        "AVCaptureDeviceTypeDeskViewCamera",
+        "AVCaptureDeviceTypeDiscoverySession"
     ]
     
-    discovery_session = AVFoundation.AVCaptureDeviceDiscoverySession.discoverySessionWithDeviceTypes_mediaType_position_(
-        device_types,
-        AVFoundation.AVMediaTypeVideo,
-        AVFoundation.AVCaptureDevicePositionUnspecified
-    )
-    devices = discovery_session.devices()
+    try:
+        discovery_session = AVFoundation.AVCaptureDeviceDiscoverySession.discoverySessionWithDeviceTypes_mediaType_position_(
+            device_types,
+            AVFoundation.AVMediaTypeVideo,
+            AVFoundation.AVCaptureDevicePositionUnspecified
+        )
+        devices = discovery_session.devices()
+        if not devices:
+            print("No devices found via DiscoverySession. Trying legacy method...")
+            devices = AVFoundation.AVCaptureDevice.devicesWithMediaType_(AVFoundation.AVMediaTypeVideo)
+    except Exception as e:
+        print(f"Error using DiscoverySession: {e}")
+        devices = AVFoundation.AVCaptureDevice.devicesWithMediaType_(AVFoundation.AVMediaTypeVideo)
+
     for i, dev in enumerate(devices):
         print(f"Index {i}: {dev.localizedName()} (Type: {dev.deviceType()}, ID: {dev.uniqueID()})")
     return devices

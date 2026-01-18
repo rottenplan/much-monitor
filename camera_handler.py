@@ -42,31 +42,50 @@ class CameraHandler:
                 device_types = [
                     "AVCaptureDeviceTypeBuiltInWideAngleCamera",
                     "AVCaptureDeviceTypeExternalUnknown", 
-                    "AVCaptureDeviceTypeContinuityCamera"
+                    "AVCaptureDeviceTypeContinuityCamera",
+                    "AVCaptureDeviceTypeBuiltInUltraWideCamera",
+                    "AVCaptureDeviceTypeDeskViewCamera"
                 ]
                 
                 # Check different API versions compatibility
+                devices = []
                 if hasattr(AVFoundation.AVCaptureDeviceDiscoverySession, 'discoverySessionWithDeviceTypes_mediaType_position_'):
                     discovery_session = AVFoundation.AVCaptureDeviceDiscoverySession.discoverySessionWithDeviceTypes_mediaType_position_(
                         device_types,
                         AVFoundation.AVMediaTypeVideo,
                         AVFoundation.AVCaptureDevicePositionUnspecified
                     )
-                    devices = discovery_session.devices()
-                else:
-                    devices = [d for d in AVFoundation.AVCaptureDevice.devicesWithMediaType_(AVFoundation.AVMediaTypeVideo)]
+                    devices = list(discovery_session.devices())
+                
+                # Fallback to legacy if list is empty
+                if not devices:
+                    devices = list(AVFoundation.AVCaptureDevice.devicesWithMediaType_(AVFoundation.AVMediaTypeVideo))
 
-                # SORTING FIX:
-                # OpenCV (driver) tends to put External cameras (Continuity/USB) at Index 0, and Built-in at Index 1+
-                # AVFoundation (OS) puts Built-in at Index 0.
-                # To match OpenCV, we sort the OS list so External cameras come first.
-                # "AVCaptureDeviceTypeBuiltInWideAngleCamera" will be pushed to the end.
-                devices = sorted(devices, key=lambda d: 1 if "BuiltIn" in d.deviceType() else 0)
+                # PRIORITIZATION FIX:
+                # We want iPhone/Continuity cameras to be at the very top (Index 0).
+                # Priority: 0 (iPhone/Continuity), 1 (Other External), 2 (Built-in)
+                def device_priority(d):
+                    name = d.localizedName().lower()
+                    dtype = d.deviceType().lower()
+                    if "iphone" in name or "continuity" in dtype:
+                        return 0
+                    if "builtin" in dtype:
+                        return 2
+                    return 1
+                
+                devices = sorted(devices, key=device_priority)
 
                 # Directly map index -> device name
                 for i, dev in enumerate(devices):
                     try:
                         name = dev.localizedName()
+                        dtype = dev.deviceType()
+                        
+                        # EXCLUDE DESK VIEW:
+                        # This camera is a digital crop from the Ultrawide and highly distorted.
+                        if "desk view" in name.lower() or "deskview" in dtype.lower():
+                            continue
+                            
                         cameras.append((i, name))
                     except:
                         cameras.append((i, f"Camera {i}"))

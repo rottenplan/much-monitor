@@ -7,6 +7,7 @@ import time
 import cv2
 import os
 import threading
+from datetime import datetime
 
 class CalibrationApp:
     def __init__(self, root):
@@ -62,6 +63,14 @@ class CalibrationApp:
         
         self.refresh_btn = tk.Button(cam_frame, text="Refresh", command=self.refresh_cameras, bg="#444444", fg="black", font=("Arial", 10, "bold"))
         self.refresh_btn.grid(row=0, column=1, padx=5)
+
+        self.status_cam_label = tk.Label(
+            self.main_frame, 
+            text="Mendeteksi kamera...", 
+            fg="#00d1ff", bg="#1e1e1e", 
+            font=("Arial", 10, "italic")
+        )
+        self.status_cam_label.pack(pady=5)
 
         # Mock Mode Checkbox
         self.mock_var = tk.BooleanVar(value=False)
@@ -124,22 +133,36 @@ class CalibrationApp:
             messagebox.showerror("Error", f"Gagal menjalankan Menu Bar Helper: {e}")
 
     def refresh_cameras(self):
+        print("DEBUG: Refreshing cameras...")
         cameras_with_names = CameraHandler.get_available_cameras_with_names()
+        print(f"DEBUG: Found cameras: {cameras_with_names}")
         self.camera_map = {}
         
         display_names = []
+        iphone_indices = []
+        
         for idx, name in cameras_with_names:
+            display_name = f"{name} (Index: {idx})"
+            self.camera_map[display_name] = idx
+            display_names.append(display_name)
             if "iphone" in name.lower():
-                display_name = f"{name} (ID: {idx})"
-                self.camera_map[display_name] = idx
-                display_names.append(display_name)
+                iphone_indices.append(len(display_names) - 1)
+        
+        print(f"DEBUG: Display names: {display_names}")
             
         if not display_names:
-            self.cam_combo['values'] = ("Tidak ada iPhone terdeteksi",)
+            self.cam_combo['values'] = ("Tidak ada kamera terdeteksi",)
             self.cam_combo.current(0)
         else:
             self.cam_combo['values'] = display_names
-            self.cam_combo.current(0)
+            # Default to first iPhone found, or just the first camera
+            if iphone_indices:
+                print(f"DEBUG: Defaulting to iPhone at index {iphone_indices[0]}")
+                self.cam_combo.current(iphone_indices[0])
+                self.status_cam_label.config(text=f"iPhone Terdeteksi! ({len(display_names)} kamera total)", fg="#00FF00")
+            else:
+                self.cam_combo.current(0)
+                self.status_cam_label.config(text=f"{len(display_names)} kamera ditemukan (Tidak ada iPhone)", fg="#FFA500")
         
         self.update_button_state()
 
@@ -207,45 +230,49 @@ class CalibrationApp:
         screen_w = self.calib_win.winfo_screenwidth()
         screen_h = self.calib_win.winfo_screenheight()
         
-        # UI Container
-        self.overlay_canvas = tk.Canvas(self.calib_win, bg="black", highlightthickness=0)
+        # UI Container (Full Screen Canvas)
+        self.overlay_canvas = tk.Canvas(self.calib_win, bg="white", highlightthickness=0)
         self.overlay_canvas.pack(fill=tk.BOTH, expand=True)
         
-        # Live Preview Label (Slightly larger now)
+        # Live Preview Label
         preview_w, preview_h = 400, 300
-        # Change parent to overlay_canvas to ensure it stays on top
-        self.preview_label = tk.Label(self.overlay_canvas, bg="#1a1a1a", borderwidth=4, relief=tk.SOLID, text="Memuat Preview...", fg="white")
+        self.preview_label = tk.Label(self.calib_win, bg="#1a1a1a", borderwidth=4, relief=tk.SOLID, text="Memuat Preview...", fg="white")
         self.preview_label.place(relx=0.5, rely=0.6, anchor="center") 
+        self.preview_label.lift()
         
-        # Center Target (Besar frame disesuaikan agar mudah membidik)
-        patch_size = 300
-        x1, y1 = (screen_w - patch_size)//2, (screen_h - patch_size)//4 # Geser sedikit ke atas
-        x2, y2 = x1 + patch_size, y1 + patch_size
+        # Center Target (Alignment Guide)
+        guide_size = 300
+        x1, y1 = (screen_w - guide_size)//2, (screen_h - guide_size)//4
+        x2, y2 = x1 + guide_size, y1 + guide_size
         
         self.target_rect = self.overlay_canvas.create_rectangle(
             x1-5, y1-5, x2+5, y2+5, 
-            outline="#007aff", width=3
+            outline="#007aff", width=5 # Thicker for visibility
         )
         
-        self.patch = tk.Frame(self.calib_win, bg="white", width=patch_size, height=patch_size)
-        self.patch.place(x=x1, y=y1)
+        # Self.patch is no longer a separate frame; we use overlay_canvas background
+        self.patch = self.overlay_canvas 
         
         self.status_label = tk.Label(
             self.calib_win, 
             text="Langkah 1: Posisikan Kamera", 
-            fg="#00d1ff", bg="black",
-            font=("Arial", 28, "bold")
+            fg="#00d1ff", bg="black", # Contrast bg for label
+            font=("Arial", 28, "bold"),
+            padx=10, pady=5
         )
         self.status_label.place(relx=0.5, rely=0.1, anchor="center")
+        self.status_label.lift()
 
         self.sub_status = tk.Label(
             self.calib_win,
             text="Pastikan lensa kamera sejajar dengan kotak biru di atas.\nLihat preview di bawah untuk memastikan posisi sudah pas.",
             fg="#00d1ff", bg="black",
             font=("Arial", 14),
-            justify=tk.CENTER
+            justify=tk.CENTER,
+            padx=10, pady=5
         )
         self.sub_status.place(relx=0.5, rely=0.18, anchor="center")
+        self.sub_status.lift()
 
         # Instruction or Ready Signal
         self.ready_btn = tk.Button(
@@ -284,7 +311,8 @@ class CalibrationApp:
                 self.preview_label.img_tk = img_tk  # Reference
                 self.preview_label.configure(image=img_tk, text="") # Clear text if image is shown
             except Exception as e:
-                print(f"DEBUG: Error processing frame: {e}")
+                if self._preview_count % 30 == 0:
+                    print(f"DEBUG: Error processing frame: {e}")
         else:
             # Show reconnecting message if frame is None
             try:
@@ -324,7 +352,7 @@ class CalibrationApp:
         
         for rgb in colors:
             hex_color = '#%02x%02x%02x' % rgb
-            self.patch.configure(bg=hex_color)
+            self.overlay_canvas.configure(bg=hex_color) # PATCH IS NOW CANVAS
             self.status_label.configure(text=f"Membaca Warna: {rgb}")
             self.calib_win.update()
             
@@ -413,15 +441,17 @@ class CalibrationApp:
                     messagebox.showerror("Error", "Tidak bisa membuat direktori!")
                     return
             
-            # Save files
-            ti3_path = os.path.join(target_dir, "calibration_data.ti3")
-            icc_path = os.path.join(target_dir, "monitor_profile.icc")
+            # Generate unique filename with timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            icc_name = f"profile_{timestamp}.icc"
             
-            self.logic.export_ti3(ti3_path)
+            # Save ICC profile
+            icc_path = os.path.join(target_dir, icc_name)
             self.logic.generate_basic_icc(icc_path)
+            
             self.logic.reset() # Clear data
             
-            messagebox.showinfo("Berhasil", f"Profil berhasil disimpan ke:\n{target_dir}")
+            messagebox.showinfo("Berhasil", f"Profil ICC berhasil disimpan ke:\n{icc_path}")
             res_win.destroy()
             
         def install_and_apply_action():
