@@ -97,48 +97,54 @@ class CameraHandler:
         if self.cap is not None:
             self.stop()
             
-        print(f"Attempting to start camera index {self.camera_index}...")
+        print(f"--- Memulai Kamera (Index: {self.camera_index}) ---")
         
         # Enforce AVFoundation on macOS for better compatibility with iPhone
         force_backend = cv2.CAP_ANY
         if platform.system() == "Darwin":
-            print("MacOS detected: Forcing AVFoundation backend.")
+            print("MacOS: Menggunakan backend AVFoundation.")
             force_backend = cv2.CAP_AVFOUNDATION
             
         self.cap = cv2.VideoCapture(self.camera_index, force_backend)
         
         if not self.cap.isOpened():
-            print(f"Failed to open camera {self.camera_index}")
+            print(f"ERROR: Gagal membuka kamera pada index {self.camera_index}")
             self.cap = None
             return False
             
-        # Set resolution to HD to force camera wake-up/mode switch
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+        # Tips: Beberapa kamera iPhone butuh waktu sebelum kita set resolusi
+        print("Kamera terbuka. Menunggu frame awal sebelum set resolusi...")
         
-        # Try to disable Auto Exposure for accurate color/gamma readings
-        # Note: many macOS cameras ignore this, but it's worth a try.
-        try:
-            self.cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25) # 0.25 (1 in some versions) = Manual
-            # self.cap.set(cv2.CAP_PROP_EXPOSURE, -5) # Adjust if needed
-        except:
-            pass
-        
-        print("Camera opened. Warming up...")
-            
-        # Warmup loop: Continuity Camera and some webcams take time to send the first frame.
-        # Try for up to 3 seconds (30 attempts * 0.1s)
-        for i in range(30):
+        warmup_success = False
+        for i in range(20):
             ret, frame = self.cap.read()
             if ret:
-                print(f"Frame received on attempt {i+1}")
-                return True
+                print(f"Frame awal didapat pada percobaan ke-{i+1}")
+                warmup_success = True
+                break
             time.sleep(0.1)
+
+        # Set resolusi ke HD (Opsional, jika gagal tetap lanjut)
+        current_w = self.cap.get(cv2.CAP_PROP_FRAME_WIDTH)
+        current_h = self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
+        print(f"Resolusi saat ini: {current_w}x{current_h}")
+        
+        if current_w != 1920 or current_h != 1080:
+            print("Mencoba set resolusi ke HD (1920x1080)...")
+            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
+            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
             
-        # If we get here, we failed to get a frame after waiting
-        print("Failed to get first frame after warmup.")
-        self.stop()
-        return False
+            # Cek apakah resolusi berubah atau masih bisa baca frame
+            ret, frame = self.cap.read()
+            if not ret:
+                print("Peringatan: Gagal baca frame setelah set HD. Menggunakan pengaturan default.")
+                # Re-open if catastrophic failure on resolution change
+                self.cap.release()
+                self.cap = cv2.VideoCapture(self.camera_index, force_backend)
+                warmup_success = self.cap.isOpened()
+        
+        print("Kamera siap.")
+        return warmup_success
 
     def get_frame(self):
         if self.mock_mode:

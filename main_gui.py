@@ -129,12 +129,13 @@ class CalibrationApp:
         
         display_names = []
         for idx, name in cameras_with_names:
-            display_name = f"{name} (ID: {idx})"
-            self.camera_map[display_name] = idx
-            display_names.append(display_name)
+            if "iphone" in name.lower():
+                display_name = f"{name} (ID: {idx})"
+                self.camera_map[display_name] = idx
+                display_names.append(display_name)
             
         if not display_names:
-            self.cam_combo['values'] = ("Tidak ada kamera terdeteksi",)
+            self.cam_combo['values'] = ("Tidak ada iPhone terdeteksi",)
             self.cam_combo.current(0)
         else:
             self.cam_combo['values'] = display_names
@@ -167,6 +168,7 @@ class CalibrationApp:
         else:
             # Retrieve index from map using full selection string
             cam_index = self.camera_map.get(selection, 0)
+        print(f"DEBUG: Selected camera '{selection}' -> Index {cam_index}")
             
         # Create handler instance
         self.camera = CameraHandler(camera_index=cam_index, mock_mode=is_mock)
@@ -211,8 +213,9 @@ class CalibrationApp:
         
         # Live Preview Label (Slightly larger now)
         preview_w, preview_h = 400, 300
-        self.preview_label = tk.Label(self.calib_win, bg="#1a1a1a", borderwidth=2, relief=tk.SOLID)
-        self.preview_label.place(relx=0.5, rely=0.6, anchor="center") # Pindah ke tengah bawah patch
+        # Change parent to overlay_canvas to ensure it stays on top
+        self.preview_label = tk.Label(self.overlay_canvas, bg="#1a1a1a", borderwidth=4, relief=tk.SOLID, text="Memuat Preview...", fg="white")
+        self.preview_label.place(relx=0.5, rely=0.6, anchor="center") 
         
         # Center Target (Besar frame disesuaikan agar mudah membidik)
         patch_size = 300
@@ -260,24 +263,39 @@ class CalibrationApp:
         self.update_preview()
 
     def update_preview(self):
-        if not self.preview_active:
+        if not self.preview_active or not self.preview_label.winfo_exists():
             return
             
         frame = self.camera.get_frame()
         if frame is not None:
             # Resize for small preview
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            img = Image.fromarray(frame)
-            img.thumbnail((400, 300)) # Ukuran disesuaikan
-            
-            img_tk = ImageTk.PhotoImage(image=img)
-            self.preview_label.img_tk = img_tk  # Reference
-            self.preview_label.configure(image=img_tk, text="") # Clear text if image is shown
+            try:
+                # DEBUG: Log every 30 frames to avoid spamming but confirm it's alive
+                if not hasattr(self, '_preview_count'): self._preview_count = 0
+                self._preview_count += 1
+                if self._preview_count % 30 == 0:
+                    print(f"DEBUG: Frame received ({frame.shape[1]}x{frame.shape[0]})")
+
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                img = Image.fromarray(frame)
+                img.thumbnail((400, 300)) # Ukuran disesuaikan
+                
+                img_tk = ImageTk.PhotoImage(image=img)
+                self.preview_label.img_tk = img_tk  # Reference
+                self.preview_label.configure(image=img_tk, text="") # Clear text if image is shown
+            except Exception as e:
+                print(f"DEBUG: Error processing frame: {e}")
         else:
             # Show reconnecting message if frame is None
-            self.preview_label.configure(image="", text="Signal Lost\nReconnecting...", fg="#00d1ff", bg="#333", font=("Arial", 14, "bold"))
+            try:
+                if self._preview_count % 30 == 0:
+                    print("DEBUG: get_frame returned None")
+                self.preview_label.configure(image="", text="Signal Lost\nReconnecting...", fg="#00d1ff", bg="#333", font=("Arial", 14, "bold"))
+            except:
+                pass
         
-        self.root.after(30, self.update_preview)
+        # Increase frequency for smoother preview
+        self.root.after(15, self.update_preview)
 
     def confirm_and_start(self):
         self.preview_active = False
@@ -341,7 +359,7 @@ class CalibrationApp:
         res_win.grab_set()
         
         # Header
-        tk.Label(res_win, text="Calibration Complete", font=("Arial", 24, "bold"), bg="#1e1e1e", fg="white").pack(pady=(30, 5))
+        tk.Label(res_win, text="Kalibrasi Selesai", font=("Arial", 24, "bold"), bg="#1e1e1e", fg="white").pack(pady=(30, 5))
         tk.Label(res_win, text=metrics['grade'], font=("Arial", 16), bg="#1e1e1e", fg="#00d1ff").pack(pady=(0, 20))
         
         # Score Cards Frame
@@ -349,20 +367,20 @@ class CalibrationApp:
         score_frame.pack(pady=10)
         
         # Before Card
-        self._create_score_card(score_frame, "Before (Raw Delta E)", f"{metrics['avg_raw']:.1f}", "#ff4444")
+        self._create_score_card(score_frame, "Sebelum (Raw Delta E)", f"{metrics['avg_raw']:.1f}", "#ff4444")
         
         # Arrow
         tk.Label(score_frame, text="→", font=("Arial", 30), bg="#1e1e1e", fg="#666").pack(side=tk.LEFT, padx=20)
         
         # After Card
         color = "#00FF00" if metrics['avg_corrected'] < 5 else "#FFA500"
-        self._create_score_card(score_frame, "After (Corrected)", f"{metrics['avg_corrected']:.1f}", color)
+        self._create_score_card(score_frame, "Sesudah (Terkoreksi)", f"{metrics['avg_corrected']:.1f}", color)
         
         # Details
-        tk.Label(res_win, text=f"Improvement: +{metrics['improvement']:.1f}%", font=("Arial", 14), bg="#1e1e1e", fg="#aaaaaa").pack(pady=10)
+        tk.Label(res_win, text=f"Peningkatan: +{metrics['improvement']:.1f}%", font=("Arial", 14), bg="#1e1e1e", fg="#aaaaaa").pack(pady=10)
         
         # --- Save Location Section ---
-        save_frame = tk.LabelFrame(res_win, text="Save Profile Location", font=("Arial", 10, "bold"), bg="#1e1e1e", fg="#ccc", padx=10, pady=10)
+        save_frame = tk.LabelFrame(res_win, text="Lokasi Penyimpanan Profil", font=("Arial", 10, "bold"), bg="#1e1e1e", fg="#ccc", padx=10, pady=10)
         save_frame.pack(pady=20, padx=20, fill="x")
         
         # Default Path
