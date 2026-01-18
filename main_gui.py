@@ -316,11 +316,14 @@ class CalibrationApp:
         self.overlay_canvas = tk.Canvas(self.calib_win, bg="white", highlightthickness=0)
         self.overlay_canvas.pack(fill=tk.BOTH, expand=True)
         
-        # Live Preview Label
-        preview_w, preview_h = 400, 300
-        self.preview_label = tk.Label(self.calib_win, bg="#1a1a1a", borderwidth=4, relief=tk.SOLID, text="Memuat Preview...", fg="white")
-        self.preview_label.place(relx=0.5, rely=0.6, anchor="center") 
-        self.preview_label.lift()
+        # 4. SIDEBAR (Unified Control Station)
+        self.sidebar = tk.Frame(self.calib_win, bg="black")
+        self.sidebar.place(relx=0.98, rely=0.98, anchor="se")
+
+        # Live Preview Label (Now in sidebar)
+        preview_w, preview_h = 320, 240
+        self.preview_label = tk.Label(self.sidebar, bg="#111111", highlightthickness=1, highlightbackground="#333333", text="Memuat Preview...", fg="white")
+        self.preview_label.pack(fill="x", pady=(0, 10))
         
         # Center Target (Alignment Guide)
         guide_size = 300
@@ -335,28 +338,36 @@ class CalibrationApp:
         # Self.patch is no longer a separate frame; we use overlay_canvas background
         self.patch = self.overlay_canvas 
         
+        # 5. INFO PANEL (Unified Station-Style Box, now in sidebar)
+        self.info_panel = tk.Frame(self.sidebar, bg="#111111", padx=20, pady=20, highlightthickness=1, highlightbackground="#333333")
+        self.info_panel.pack(fill="x")
+        
         self.status_label = tk.Label(
-            self.calib_win, 
+            self.info_panel, 
             text="Langkah 1: Posisikan Kamera", 
-            fg="#00d1ff", bg="black", # Contrast bg for label
-            font=("Arial", 28, "bold"),
-            padx=15, pady=10,
-            borderwidth=2, relief=tk.RIDGE
+            fg="#00D1FF", bg="#111111",
+            font=("Inter", 20, "bold"),
+            justify=tk.RIGHT
         )
-        self.status_label.place(relx=0.5, rely=0.1, anchor="center")
-        self.status_label.lift()
+        self.status_label.pack(anchor="e")
 
         self.sub_status = tk.Label(
-            self.calib_win,
-            text="1. Sejajarkan lensa dengan kotak biru.\n2. PENTING: Tekan & Tahan layar iPhone untuk kunci FOCUS & EXPOSURE (AE/AF Lock).",
-            fg="#00d1ff", bg="black",
-            font=("Arial", 14, "bold"),
-            justify=tk.CENTER,
-            padx=15, pady=10,
-            borderwidth=2, relief=tk.RIDGE
+            self.info_panel,
+            text="Sejajarkan lensa dengan kotak biru.\nTekan & Tahan layar iPhone untuk kunci FOCUS & EXPOSURE.",
+            fg="#888888", bg="#111111",
+            font=("Inter", 10),
+            justify=tk.RIGHT
         )
-        self.sub_status.place(relx=0.5, rely=0.18, anchor="center")
-        self.sub_status.lift()
+        self.sub_status.pack(anchor="e", pady=(5, 0))
+        
+        self.warning_label = tk.Label(
+            self.info_panel,
+            text="",
+            fg="#555555", bg="#111111",
+            font=("Inter", 9, "italic"),
+            justify=tk.RIGHT
+        )
+        self.warning_label.pack(anchor="e", pady=(10, 0))
 
         # Instruction or Ready Signal
         self.ready_btn = tk.Button(
@@ -389,7 +400,7 @@ class CalibrationApp:
 
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 img = Image.fromarray(frame)
-                img.thumbnail((400, 300)) # Ukuran disesuaikan
+                img.thumbnail((320, 240)) # Ukuran disesuaikan sidebar
                 
                 img_tk = ImageTk.PhotoImage(image=img)
                 self.preview_label.img_tk = img_tk  # Reference
@@ -413,15 +424,8 @@ class CalibrationApp:
         self.preview_active = False
         self.ready_btn.destroy()
         self.preview_label.destroy()
-        self.sub_status.destroy()
-        self.status_label.configure(text="Proses Kalibrasi Sedang Berjalan...")
-        self.overlay_canvas.create_text(
-            self.calib_win.winfo_screenwidth()//2, 
-            self.calib_win.winfo_screenheight()//2 + 200,
-            text="Mohon tidak menggerakkan kamera atau menutup aplikasi.",
-            fill="#00d1ff", font=("Arial", 16, "italic"),
-            tag="warning_text"
-        )
+        self.status_label.configure(text="Persiapan Kalibrasi...")
+        self.warning_label.configure(text="Mohon tidak menggerakkan kamera atau menutup aplikasi.")
         self.root.after(1000, self.run_sequence)
 
     def run_sequence(self):
@@ -468,8 +472,16 @@ class CalibrationApp:
             captured = self.camera.get_average_color()
             if captured:
                 self.logic.record_sample(rgb, captured)
+                # Visual Indicator: Flash green checkmark
+                original_text = self.sub_status.cget("text")
+                self.sub_status.configure(text=f"✓ Data Terbaca ({i+1}/{total_steps})", fg="#34C759")
+                self.info_panel.configure(highlightbackground="#34C759") # Flash border green too
+                self.calib_win.update()
+                time.sleep(0.2) # Show feedback for 200ms
+                self.sub_status.configure(fg="#888888")
+                self.info_panel.configure(highlightbackground="#333333") # Reset border
             
-            time.sleep(0.1)
+            time.sleep(0.05)
 
         # 4. Perform Calculation and Verification
         self.finish_calibration(wp_target, gamma_target)
@@ -488,24 +500,24 @@ class CalibrationApp:
         """Displays a modern, dark-themed result summary with Save Options."""
         res_win = tk.Toplevel(self.root)
         res_win.title("MuchPro Analysis")
-        res_win.geometry("680x780")
+        res_win.geometry("480x680")
         res_win.configure(bg="#080808")
         
         res_win.lift()
         res_win.focus_force()
         res_win.grab_set()
         
-        content = tk.Frame(res_win, bg="#080808", padx=40, pady=40)
+        content = tk.Frame(res_win, bg="#080808", padx=30, pady=30)
         content.pack(fill=tk.BOTH, expand=True)
 
         # Header
-        tk.Label(content, text="ANALISIS SELESAI", font=("Inter", 10, "bold"), fg="#00D1FF", bg="#080808", letterspacing=2).pack(pady=(0, 5))
-        tk.Label(content, text=metrics['grade'], font=("Inter", 24, "bold"), bg="#080808", fg="white").pack(pady=(0, 20))
+        tk.Label(content, text="ANALISIS SELESAI", font=("Inter", 10, "bold"), fg="#00D1FF", bg="#080808").pack(pady=(0, 5))
+        tk.Label(content, text=metrics['grade'], font=("Inter", 18, "bold"), bg="#080808", fg="white").pack(pady=(0, 15))
         
         # Target Info Badge
-        target_badge = tk.Frame(content, bg="#1A1A1A", padx=15, pady=8)
-        target_badge.pack(pady=(0, 30))
-        tk.Label(target_badge, text=f"TARGET: {wp_target}  •  GAMMA {gamma_target}", font=("Inter", 9, "bold"), bg="#1A1A1A", fg="#888").pack()
+        target_badge = tk.Frame(content, bg="#1A1A1A", padx=12, pady=6)
+        target_badge.pack(pady=(0, 20))
+        tk.Label(target_badge, text=f"TARGET: {wp_target}  •  GAMMA {gamma_target}", font=("Inter", 8, "bold"), bg="#1A1A1A", fg="#888").pack()
 
         # Score Row
         score_row = tk.Frame(content, bg="#080808")
@@ -518,11 +530,11 @@ class CalibrationApp:
         self._create_score_card(score_row, "PRO-CAL DELTA-E", f"{metrics['avg_corrected']:.1f}", corrected_color)
         
         # Description
-        tk.Label(content, text=metrics['description'], font=("Inter", 12), bg="#080808", fg="#888", wraplength=550, pady=30).pack()
+        tk.Label(content, text=metrics['description'], font=("Inter", 11), bg="#080808", fg="#888", wraplength=400, pady=15).pack()
 
         # --- Save Location Section ---
-        save_frame = tk.LabelFrame(content, text="Lokasi Penyimpanan Profil", font=("Arial", 10, "bold"), bg="#080808", fg="#ccc", padx=10, pady=10)
-        save_frame.pack(pady=20, padx=0, fill="x") # Adjusted padx to 0 to match content frame
+        save_frame = tk.LabelFrame(content, text="Lokasi Penyimpanan Profil", font=("Arial", 9, "bold"), bg="#080808", fg="#ccc", padx=10, pady=8)
+        save_frame.pack(pady=15, padx=0, fill="x") # Adjusted padx to 0 to match content frame
 
         # Default Path
         default_dir = os.path.join(os.getcwd(), "calibration_output")
@@ -542,8 +554,8 @@ class CalibrationApp:
         tk.Button(entry_frame, text="Browse...", command=browse_folder, bg="#444", fg="black").pack(side=tk.RIGHT)
 
         # Action Buttons
-        btn_frame = tk.Frame(content, bg="#080808") # Changed parent to content
-        btn_frame.pack(fill="x", pady=20) # Adjusted pady
+        btn_frame = tk.Frame(content, bg="#080808")
+        btn_frame.pack(fill="x", pady=15)
 
         
         def save_action():
@@ -596,9 +608,8 @@ class CalibrationApp:
             res_win.destroy()
 
         def discard_action():
-            if messagebox.askyesno("Discard?", "Apakah Anda yakin ingin membuang kalibrasi ini?"):
-                self.logic.reset()
-                res_win.destroy()
+            self.logic.reset()
+            res_win.destroy()
         
         ModernButton(btn_frame, text="SIMPAN PROFIL (.ICC)", command=lambda: save_action(), bg="#00D1FF", fg="black").pack(fill="x", pady=5)
         ModernButton(btn_frame, text="INSTAL & TERAPKAN (StudioICC Mode)", command=lambda: install_and_apply_action(), bg="#007AFF", fg="white").pack(fill="x", pady=5)
@@ -607,11 +618,11 @@ class CalibrationApp:
 
     def _create_score_card(self, parent, title, value, color):
         """Creates a modern flat score card."""
-        card = tk.Frame(parent, bg="#121212", padx=20, pady=20)
+        card = tk.Frame(parent, bg="#121212", padx=15, pady=15)
         card.pack(side=tk.LEFT, expand=True, fill="both")
         
-        tk.Label(card, text=title, font=("Inter", 8, "bold"), fg="#555", bg="#121212").pack()
-        tk.Label(card, text=value, font=("Inter", 32, "bold"), fg=color, bg="#121212").pack(pady=10)
+        tk.Label(card, text=title, font=("Inter", 7, "bold"), fg="#555", bg="#121212").pack()
+        tk.Label(card, text=value, font=("Inter", 24, "bold"), fg=color, bg="#121212").pack(pady=8)
 
 if __name__ == "__main__":
     root = tk.Tk()
