@@ -1,5 +1,6 @@
 import math
 import numpy as np
+from simple_icc import SimpleICCGenerator
 
 class CalibrationLogic:
     def __init__(self):
@@ -37,11 +38,11 @@ class CalibrationLogic:
         self.ccm, residuals, rank, s = np.linalg.lstsq(captured_mat, target_mat, rcond=None)
         return self.ccm
 
-    def analyze(self):
-        """Menganalisis hasil dan memberikan saran sederhana."""
+    def get_performance_metrics(self):
+        """Returns analysis data as a dictionary."""
         if not self.results:
-            return "Tidak ada data sampel."
-
+            return None
+            
         self.compute_ccm()
         
         total_delta = 0
@@ -58,20 +59,42 @@ class CalibrationLogic:
                 corrected_delta += self.calculate_delta_e(target, corrected)
         
         avg_delta = total_delta / len(self.results)
-        avg_corrected_delta = (corrected_delta / len(self.results)) if self.ccm is not None else avg_delta
+        avg_corrected = (corrected_delta / len(self.results)) if self.ccm is not None else avg_delta
         
-        report = f"Average RGB Error (Raw): {avg_delta:.2f}\n"
-        if self.ccm is not None:
-            report += f"Average RGB Error (Corrected): {avg_corrected_delta:.2f}\n"
-            improvement = ((avg_delta - avg_corrected_delta) / avg_delta) * 100 if avg_delta > 0 else 0
-            report += f"Estimated accuracy improvement: {improvement:.1f}%\n\n"
+        improvement = ((avg_delta - avg_corrected) / avg_delta) * 100 if avg_delta > 0 else 0
         
-        if avg_corrected_delta < 5:
-            report += "Kualitas warna Monitor sangat baik setelah koreksi."
-        elif avg_corrected_delta < 15:
-            report += "Kualitas warna Monitor cukup baik dengan profil koreksi."
+        # Determine grade
+        if avg_corrected < 3:
+            grade = "Excellent (Pro)"
+            desc = "Sangat akurat, cocok untuk color grading."
+        elif avg_corrected < 6:
+            grade = "Good (Consumer)"
+            desc = "Cukup baik untuk penggunaan harian."
+        elif avg_corrected < 15:
+            grade = "Fair"
+            desc = "Warna mungkin sedikit meleset."
         else:
-            report += "Monitor membutuhkan kalibrasi lebih lanjut atau monitor memiliki gamut rendah."
+            grade = "Poor"
+            desc = "Membutuhkan kalibrasi ulang atau panel terbatas."
+            
+        return {
+            "avg_raw": avg_delta,
+            "avg_corrected": avg_corrected,
+            "improvement": improvement,
+            "grade": grade,
+            "description": desc
+        }
+
+    def analyze(self):
+        """Menganalisis hasil dan memberikan saran sederhana (Legacy)."""
+        metrics = self.get_performance_metrics()
+        if not metrics:
+            return "Tidak ada data sampel."
+            
+        report = f"Average RGB Error (Raw): {metrics['avg_raw']:.2f}\n"
+        report += f"Average RGB Error (Corrected): {metrics['avg_corrected']:.2f}\n"
+        report += f"Estimated accuracy improvement: {metrics['improvement']:.1f}%\n\n"
+        report += metrics['description']
             
         return report
 
@@ -104,35 +127,69 @@ class CalibrationLogic:
             f.write("END_DATA\n")
         return True
 
-    def generate_basic_icc(self, filename="color_correction.txt"):
+    def generate_basic_icc(self, filename="monitor_profile.icc"):
         """
-        Menghasilkan file koreksi yang lebih lengkap termasuk CCM.
+        Generates a valid binary ICC v2 monitor profile based on measured data.
         """
         if not self.results:
             return False
             
-        # Mencari sample 'White' (255,255,255)
-        white_sample = next((r for r in self.results if r['target'] == (255, 255, 255)), None)
-        
-        with open(filename, "w") as f:
-            f.write("# Monitor Correction Data (Advanced)\n\n")
+        try:
+            # 1. Extraction of Measured Data
+            # Note: Since we don't have absolute XYZ, we assume Captured RGB of White maps to D50
+            # and other primaries are relative to it.
+            white_cap = next((r['captured'] for r in self.results if r['target'] == (255, 255, 255)), (255, 255, 255))
+            red_cap   = next((r['captured'] for r in self.results if r['target'] == (255, 0, 0)), (255, 0, 0))
+            green_cap = next((r['captured'] for r in self.results if r['target'] == (0, 255, 0)), (0, 255, 0))
+            blue_cap  = next((r['captured'] for r in self.results if r['target'] == (0, 0, 255)), (0, 0, 255))
             
-            if white_sample:
-                target = white_sample['target']
-                captured = white_sample['captured']
-                r_gain = target[0] / max(captured[0], 1)
-                g_gain = target[1] / max(captured[1], 1)
-                b_gain = target[2] / max(captured[2], 1)
-                f.write(f"WHITEBALANCE_GAIN: {r_gain:.4f}, {g_gain:.4f}, {b_gain:.4f}\n\n")
+            # 2. Estimation of Gamma
+            # We look at target (128, 128, 128) and (255, 255, 255)
+            gray_cap = next((r['captured'] for r in self.results if r['target'] == (128, 128, 128)), (128, 128, 128))
             
-            if self.ccm is not None:
-                f.write("COLOR_CORRECTION_MATRIX (3x3):\n")
-                for row in self.ccm:
-                    f.write(f"{row[0]:.4f} {row[1]:.4f} {row[2]:.4f}\n")
-                f.write("\n# Koreksi Target = [R, G, B] * Matrix\n")
+            # Simple Gamma formula: Intensity = Digital ^ Gamma
+            try:
+                # Use mean of R,G,B to get luminance approximation
+                measured_intensity = np.mean(gray_cap) / np.mean(white_cap)
+                digital_ratio = 127.5 / 255.0
+                estimated_gamma = math.log(measured_intensity) / math.log(digital_ratio)
                 
-            f.write("\n# Gunakan data ini untuk software profiling atau kalibrasi software.\n")
-        return True
+                # SANITY CHECK: 
+                # If camera auto-exposure is on, measured_intensity will be ~0.5, 
+                # leading to Gamma ~1.0. Real monitors are usually 1.8 - 2.4.
+                if estimated_gamma < 1.4 or estimated_gamma > 2.8:
+                    print(f"Warning: Measured Gamma {estimated_gamma:.2f} seems unrealistic (possibly Camera Auto-Exposure interference).")
+                    print("Defaulting to standard Gamma 2.2 for better profile stability.")
+                    estimated_gamma = 2.2
+                    
+            except Exception as e:
+                print(f"Gamma calculation failed: {e}. Defaulting to 2.2")
+                estimated_gamma = 2.2
+            
+            print(f"Data-Driven ICC: Final Gamma used = {estimated_gamma:.2f}")
+
+            generator = SimpleICCGenerator(description="MuchCalibrated Monitor", gamma=estimated_gamma)
+            
+            # Normalize measurements to approximated XYZ for PCS (White = D50)
+            # D50 = (0.9642, 1.0000, 0.8249)
+            norm = np.array(white_cap, dtype=float)
+            if np.any(norm == 0): norm = np.array([255, 255, 255], dtype=float)
+            
+            def to_xyz(cap):
+                # Naive approximation: Scale relative to measured white, then scale to D50
+                rel = np.array(cap, dtype=float) / norm
+                return (rel[0] * 0.9642, rel[1] * 1.0, rel[2] * 0.8249)
+
+            generator.set_white_point(to_xyz(white_cap))
+            generator.set_primaries(to_xyz(red_cap), to_xyz(green_cap), to_xyz(blue_cap))
+            
+            generator.create_profile(filename)
+            return True
+        except Exception as e:
+            print(f"Failed to generate ICC: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
 
     def reset(self):
         self.results = []

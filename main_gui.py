@@ -1,10 +1,12 @@
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import ttk, messagebox, filedialog
 from PIL import Image, ImageTk
 from camera_handler import CameraHandler
 from calibration_logic import CalibrationLogic
 import time
 import cv2
+import os
+import threading
 
 class CalibrationApp:
     def __init__(self, root):
@@ -94,7 +96,32 @@ class CalibrationApp:
             relief=tk.RAISED,
             cursor="hand2"
         )
-        self.start_button.pack(pady=30)
+        self.start_button.pack(pady=(30, 10))
+
+        # Launch Menu Bar Helper Button (StudioICC companion)
+        self.menubar_btn = tk.Button(
+            self.main_frame,
+            text="Buka Menu Bar Helper (StudioICC Mode)",
+            command=self.launch_menubar_helper,
+            bg="#1e1e1e", fg="#00d1ff",
+            font=("Arial", 11, "bold", "underline"),
+            relief=tk.FLAT,
+            activebackground="#1e1e1e",
+            activeforeground="#fff",
+            cursor="hand2"
+        )
+        self.menubar_btn.pack(pady=5)
+
+    def launch_menubar_helper(self):
+        """Launches the standalone menu bar app as a background process."""
+        import subprocess
+        import sys
+        try:
+            # Launch as a separate background process
+            subprocess.Popen([sys.executable, "menubar_app.py"])
+            messagebox.showinfo("StudioICC Mode", "Menu Bar Helper sedang berjalan!\nCari ikon 'MuchCalib' di pojok kanan atas layar.")
+        except Exception as e:
+            messagebox.showerror("Error", f"Gagal menjalankan Menu Bar Helper: {e}")
 
     def refresh_cameras(self):
         cameras_with_names = CameraHandler.get_available_cameras_with_names()
@@ -141,12 +168,30 @@ class CalibrationApp:
             # Retrieve index from map using full selection string
             cam_index = self.camera_map.get(selection, 0)
             
+        # Create handler instance
         self.camera = CameraHandler(camera_index=cam_index, mock_mode=is_mock)
         
-        if not self.camera.start():
+        # Disable button and show loading status
+        self.start_button.config(state=tk.DISABLED, text="Menghubungkan...")
+        self.root.update()
+        
+        # Start connection in background thread
+        threading.Thread(target=self.connect_camera_task, daemon=True).start()
+
+    def connect_camera_task(self):
+        """Background task to open camera."""
+        success = self.camera.start()
+        # Schedule result handling on main thread
+        self.root.after(0, lambda: self.on_camera_connection_result(success))
+
+    def on_camera_connection_result(self, success):
+        """Handle connection result on main thread."""
+        self.start_button.config(state=tk.NORMAL, text="Mulai Kalibrasi")
+        
+        if not success:
             messagebox.showerror(
                 "Error", 
-                "Gagal membuka kamera.\n\nPastikan kamera terhubung dan izin sudah diberikan."
+                "Gagal membuka kamera.\n\nPastikan kamera terhubung, tidak sedang digunakan aplikasi lain, dan izin diberikan."
             )
             return
         
@@ -227,7 +272,10 @@ class CalibrationApp:
             
             img_tk = ImageTk.PhotoImage(image=img)
             self.preview_label.img_tk = img_tk  # Reference
-            self.preview_label.configure(image=img_tk)
+            self.preview_label.configure(image=img_tk, text="") # Clear text if image is shown
+        else:
+            # Show reconnecting message if frame is None
+            self.preview_label.configure(image="", text="Signal Lost\nReconnecting...", fg="#00d1ff", bg="#333", font=("Arial", 14, "bold"))
         
         self.root.after(30, self.update_preview)
 
@@ -274,15 +322,131 @@ class CalibrationApp:
         if self.camera:
             self.camera.stop()
             
-        report = self.logic.analyze()
-        self.logic.export_ti3("calibration_data.ti3")
-        self.logic.generate_basic_icc("color_correction.txt")
-        
+        metrics = self.logic.get_performance_metrics()
         self.calib_win.destroy()
         
-        final_msg = f"HASIL ANALISIS:\n\n{report}\n\nData telah diekspor ke:\n- calibration_data.ti3\n- color_correction.txt\n\nAnda dapat menggunakan file ini di software profiling profesional."
-        messagebox.showinfo("Kalibrasi Berhasil Diselesaikan", final_msg)
-        self.logic.reset()
+        # Show custom result UI (Deffer saving to UI)
+        self.show_results_ui(metrics)
+
+    def show_results_ui(self, metrics):
+        """Displays a modern, dark-themed result summary with Save Options."""
+        res_win = tk.Toplevel(self.root)
+        res_win.title("Calibration Results")
+        res_win.geometry("650x550")
+        res_win.configure(bg="#1e1e1e")
+        
+        # Ensure window is in front and takes focus
+        res_win.lift()
+        res_win.focus_force()
+        res_win.grab_set()
+        
+        # Header
+        tk.Label(res_win, text="Calibration Complete", font=("Arial", 24, "bold"), bg="#1e1e1e", fg="white").pack(pady=(30, 5))
+        tk.Label(res_win, text=metrics['grade'], font=("Arial", 16), bg="#1e1e1e", fg="#00d1ff").pack(pady=(0, 20))
+        
+        # Score Cards Frame
+        score_frame = tk.Frame(res_win, bg="#1e1e1e")
+        score_frame.pack(pady=10)
+        
+        # Before Card
+        self._create_score_card(score_frame, "Before (Raw Delta E)", f"{metrics['avg_raw']:.1f}", "#ff4444")
+        
+        # Arrow
+        tk.Label(score_frame, text="→", font=("Arial", 30), bg="#1e1e1e", fg="#666").pack(side=tk.LEFT, padx=20)
+        
+        # After Card
+        color = "#00FF00" if metrics['avg_corrected'] < 5 else "#FFA500"
+        self._create_score_card(score_frame, "After (Corrected)", f"{metrics['avg_corrected']:.1f}", color)
+        
+        # Details
+        tk.Label(res_win, text=f"Improvement: +{metrics['improvement']:.1f}%", font=("Arial", 14), bg="#1e1e1e", fg="#aaaaaa").pack(pady=10)
+        
+        # --- Save Location Section ---
+        save_frame = tk.LabelFrame(res_win, text="Save Profile Location", font=("Arial", 10, "bold"), bg="#1e1e1e", fg="#ccc", padx=10, pady=10)
+        save_frame.pack(pady=20, padx=20, fill="x")
+        
+        # Default Path
+        default_dir = os.path.join(os.getcwd(), "calibration_output")
+        path_var = tk.StringVar(value=default_dir)
+        
+        entry_frame = tk.Frame(save_frame, bg="#1e1e1e")
+        entry_frame.pack(fill="x")
+        
+        entry = tk.Entry(entry_frame, textvariable=path_var, bg="#333", fg="white", font=("Arial", 11), insertbackground="white")
+        entry.pack(side=tk.LEFT, fill="x", expand=True, padx=(0, 10))
+        
+        def browse_folder():
+            d = filedialog.askdirectory(initialdir=path_var.get())
+            if d:
+                path_var.set(d)
+                
+        tk.Button(entry_frame, text="Browse...", command=browse_folder, bg="#444", fg="black").pack(side=tk.RIGHT)
+
+        # Action Buttons
+        btn_frame = tk.Frame(res_win, bg="#1e1e1e")
+        btn_frame.pack(pady=20)
+        
+        def save_action():
+            target_dir = path_var.get()
+            if not os.path.exists(target_dir):
+                try:
+                    os.makedirs(target_dir)
+                except:
+                    messagebox.showerror("Error", "Tidak bisa membuat direktori!")
+                    return
+            
+            # Save files
+            ti3_path = os.path.join(target_dir, "calibration_data.ti3")
+            icc_path = os.path.join(target_dir, "monitor_profile.icc")
+            
+            self.logic.export_ti3(ti3_path)
+            self.logic.generate_basic_icc(icc_path)
+            self.logic.reset() # Clear data
+            
+            messagebox.showinfo("Berhasil", f"Profil berhasil disimpan ke:\n{target_dir}")
+            res_win.destroy()
+            
+        def install_and_apply_action():
+            from profile_manager import ProfileManager
+            # 1. Generate profile temporarily
+            temp_icc = "temp_monitor_profile.icc"
+            self.logic.generate_basic_icc(temp_icc)
+            
+            # 2. Install to system
+            installed_path = ProfileManager.install_profile(temp_icc, "MuchCalibrated_Monitor.icc")
+            if installed_path:
+                # 3. Apply to display
+                main_display = ProfileManager.get_main_display_id()
+                if ProfileManager.set_display_profile(main_display, installed_path):
+                    messagebox.showinfo("Berhasil", "Profil telah DIINSTAL dan DITERAPKAN ke layar Anda!")
+                else:
+                    messagebox.showwarning("Peringatan", "Profil diinstal tapi gagal diterapkan secara otomatis.\nSilakan pilih manual di System Settings > Displays.")
+            
+            # Cleanup temp and finish
+            if os.path.exists(temp_icc): os.remove(temp_icc)
+            self.logic.reset()
+            res_win.destroy()
+
+        def discard_action():
+            if messagebox.askyesno("Discard?", "Apakah Anda yakin ingin membuang kalibrasi ini?"):
+                self.logic.reset()
+                res_win.destroy()
+        
+        tk.Button(btn_frame, text="Simpan Ke Folder...", command=save_action, 
+                  bg="#444", fg="black", font=("Arial", 12), relief="flat", padx=15, pady=8).pack(side=tk.LEFT, padx=5)
+
+        tk.Button(btn_frame, text="INSTAL & TERAPKAN (StudioICC Mode)", command=install_and_apply_action, 
+                  bg="#00d1ff", fg="black", font=("Arial", 12, "bold"), relief="flat", padx=20, pady=8).pack(side=tk.LEFT, padx=5)
+                  
+        tk.Button(btn_frame, text="Buang", command=discard_action, 
+                  bg="#1e1e1e", fg="#ff4444", font=("Arial", 12), relief="flat", padx=10, pady=8).pack(side=tk.LEFT, padx=5)
+
+    def _create_score_card(self, parent, title, value, color):
+        card = tk.Frame(parent, bg="#2a2a2a", padx=20, pady=15)
+        card.pack(side=tk.LEFT)
+        
+        tk.Label(card, text=title, font=("Arial", 10), bg="#2a2a2a", fg="#bbb").pack()
+        tk.Label(card, text=value, font=("Arial", 36, "bold"), bg="#2a2a2a", fg=color).pack()
 
 if __name__ == "__main__":
     root = tk.Tk()
