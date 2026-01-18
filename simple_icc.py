@@ -58,9 +58,8 @@ class SimpleICCGenerator:
         tags.append(('gXYZ', self._make_xyz_number(self.green_xyz)))
         tags.append(('bXYZ', self._make_xyz_number(self.blue_xyz)))
         
-        # 6. curve tags (rTRC, gTRC, bTRC). Simple Gamma 2.2 curve.
-        # Format: curveType. count=1 -> u8Fixed8Number (gamma). 2.2 * 256 = 563.2
-        curve_data = self._make_simple_gamma(2.2)
+        # 6. curve tags (rTRC, gTRC, bTRC).
+        curve_data = self._make_simple_gamma(self.gamma)
         tags.append(('rTRC', curve_data))
         tags.append(('gTRC', curve_data))
         tags.append(('bTRC', curve_data))
@@ -98,7 +97,8 @@ class SimpleICCGenerator:
             model = b'\0\0\0\0'
             attributes = b'\0\0\0\0\0\0\0\0' # Reflective, Glossy, etc?
             intent = b'\0\0\0\0'
-            illuminant = struct.pack('>3i', int(0.9642 * 65536), int(1.0 * 65536), int(0.8249 * 65536)) # D50 Fixed15.16
+            # Illuminant is the PCS illuminant (Always D50 for v2)
+            illuminant = struct.pack('>3i', int(0.9642 * 65536), int(1.0 * 65536), int(0.8249 * 65536)) 
             creator = b'\0\0\0\0'
             pw_id = b'\0'*16 # Profile ID
             padding = b'\0'*28

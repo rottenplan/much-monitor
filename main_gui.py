@@ -108,18 +108,36 @@ class CalibrationApp:
         self.start_button.pack(pady=(30, 10))
 
         # Launch Menu Bar Helper Button (StudioICC companion)
-        self.menubar_btn = tk.Button(
-            self.main_frame,
-            text="Buka Menu Bar Helper (StudioICC Mode)",
-            command=self.launch_menubar_helper,
-            bg="#1e1e1e", fg="#00d1ff",
-            font=("Arial", 11, "bold", "underline"),
-            relief=tk.FLAT,
-            activebackground="#1e1e1e",
-            activeforeground="#fff",
-            cursor="hand2"
-        )
         self.menubar_btn.pack(pady=5)
+
+        # Target Settings Section
+        target_frame = tk.LabelFrame(self.main_frame, text="Target Calibration (Pro Settings)", fg="#ccc", bg="#1e1e1e", font=("Arial", 10, "bold"), padx=10, pady=10)
+        target_frame.pack(pady=10, fill="x", padx=40)
+
+        # White Point Target
+        tk.Label(target_frame, text="White Point Target:", fg="white", bg="#1e1e1e", font=("Arial", 9)).grid(row=0, column=0, sticky="w", pady=2)
+        self.target_wp = ttk.Combobox(target_frame, values=["D65 (6500K - Standard)", "D50 (5000K - Photography)"], state="readonly", width=25)
+        self.target_wp.current(0)
+        self.target_wp.grid(row=0, column=1, padx=10, pady=2)
+
+        # Gamma Target
+        tk.Label(target_frame, text="Gamma Target:", fg="white", bg="#1e1e1e", font=("Arial", 9)).grid(row=1, column=0, sticky="w", pady=2)
+        self.target_gamma = ttk.Combobox(target_frame, values=["2.2 (SDR Standard)", "2.4 (Video/Rec.709)"], state="readonly", width=25)
+        self.target_gamma.current(0)
+        self.target_gamma.grid(row=1, column=1, padx=10, pady=2)
+
+        # Environment Tips
+        tips_frame = tk.LabelFrame(self.main_frame, text="Tips Persiapan", fg="#ccc", bg="#1e1e1e", font=("Arial", 10, "bold"), padx=10, pady=10)
+        tips_frame.pack(pady=10, fill="x", padx=40)
+        
+        tips = [
+            "• Matikan lampu ruangan (Gelapkan ruangan)",
+            "• Bersihkan layar monitor dari debu/sidik jari",
+            "• Set Brightness monitor ke level standar (50-100 cd/m2)",
+            "• Matikan Mode Night Shift / True Tone"
+        ]
+        for tip in tips:
+            tk.Label(tips_frame, text=tip, fg="#00d1ff", bg="#1e1e1e", font=("Arial", 9), justify=tk.LEFT).pack(anchor="w")
 
     def launch_menubar_helper(self):
         """Launches the standalone menu bar app as a background process."""
@@ -258,18 +276,20 @@ class CalibrationApp:
             text="Langkah 1: Posisikan Kamera", 
             fg="#00d1ff", bg="black", # Contrast bg for label
             font=("Arial", 28, "bold"),
-            padx=10, pady=5
+            padx=15, pady=10,
+            borderwidth=2, relief=tk.RIDGE
         )
         self.status_label.place(relx=0.5, rely=0.1, anchor="center")
         self.status_label.lift()
 
         self.sub_status = tk.Label(
             self.calib_win,
-            text="Pastikan lensa kamera sejajar dengan kotak biru di atas.\nLihat preview di bawah untuk memastikan posisi sudah pas.",
+            text="1. Sejajarkan lensa dengan kotak biru.\n2. PENTING: Tekan & Tahan layar iPhone untuk kunci FOCUS & EXPOSURE (AE/AF Lock).",
             fg="#00d1ff", bg="black",
-            font=("Arial", 14),
+            font=("Arial", 14, "bold"),
             justify=tk.CENTER,
-            padx=10, pady=5
+            padx=15, pady=10,
+            borderwidth=2, relief=tk.RIDGE
         )
         self.sub_status.place(relx=0.5, rely=0.18, anchor="center")
         self.sub_status.lift()
@@ -341,54 +361,85 @@ class CalibrationApp:
         self.root.after(1000, self.run_sequence)
 
     def run_sequence(self):
-        # Extended colors for CCM
-        colors = [
-            (255, 0, 0), (0, 255, 0), (0, 0, 255),          # Primaries
-            (255, 255, 0), (0, 255, 255), (255, 0, 255),    # Secondaries
-            (255, 255, 255), (128, 128, 128), (64, 64, 64), # Neutral
-            (200, 100, 50), (50, 200, 100),                 # Skintone/Grass
-            (25, 25, 25), (230, 230, 230)                   # Black level/Near White
+        # 0. Collect Targets
+        wp_target = self.target_wp.get()
+        gamma_target = float(self.target_gamma.get().split()[0])
+        print(f"DEBUG: Starting Pro Calibration targeting {wp_target} and Gamma {gamma_target}")
+        
+        # 1. Professional Large Patch Set (~55 steps)
+        # Macbeth-style Standard Colors
+        macbeth = [
+            (115, 82, 68), (194, 150, 130), (98, 122, 157), (129, 149, 65), (146, 128, 181), (121, 192, 185),
+            (214, 126, 44), (80, 91, 166), (193, 130, 140), (94, 60, 108), (157, 188, 64), (224, 163, 46),
+            (56, 61, 150), (70, 148, 73), (175, 54, 60), (231, 199, 31), (187, 86, 149), (8, 133, 161)
         ]
         
-        for rgb in colors:
+        # Primary & Secondary Saturation Sweeps (R, G, B, C, M, Y)
+        sweeps = []
+        bases = [(255,0,0), (0,255,0), (0,0,255), (0,255,255), (255,0,255), (255,255,0)]
+        for b in bases:
+            for s in [0.25, 0.5, 0.75, 1.0]:
+                sweeps.append(tuple(int(c * s) for c in b))
+        
+        # High-Precision Grayscale Wedge (21 steps for buttery smooth gamma)
+        grayscale = []
+        for i in range(21):
+            val = int(i * 12.75)
+            grayscale.append((val, val, val))
+            
+        colors = macbeth + sweeps + grayscale
+        
+        total_steps = len(colors)
+        for i, rgb in enumerate(colors):
             hex_color = '#%02x%02x%02x' % rgb
-            self.overlay_canvas.configure(bg=hex_color) # PATCH IS NOW CANVAS
-            self.status_label.configure(text=f"Membaca Warna: {rgb}")
+            self.overlay_canvas.configure(bg=hex_color)
+            self.status_label.configure(text=f"Pro Calibration: Langkah {i+1}/{total_steps}")
+            self.sub_status.configure(text=f"Membaca Warna {i+1} dari {total_steps}...")
             self.calib_win.update()
             
-            time.sleep(1.2)
+            # Allow camera to settle
+            wait_time = 1.0 if i == 0 else 0.6
+            time.sleep(wait_time)
+            
             captured = self.camera.get_average_color()
             if captured:
                 self.logic.record_sample(rgb, captured)
-            time.sleep(0.3)
+            
+            time.sleep(0.1)
 
-        self.finish_calibration()
+        # 4. Perform Calculation and Verification
+        self.finish_calibration(wp_target, gamma_target)
 
-    def finish_calibration(self):
+    def finish_calibration(self, wp_target, gamma_target):
         if self.camera:
             self.camera.stop()
             
-        metrics = self.logic.get_performance_metrics()
+        metrics = self.logic.get_performance_metrics(wp_target=wp_target, gamma_target=gamma_target)
         self.calib_win.destroy()
         
-        # Show custom result UI (Deffer saving to UI)
-        self.show_results_ui(metrics)
+        # Show custom result UI
+        self.show_results_ui(metrics, wp_target, gamma_target)
 
-    def show_results_ui(self, metrics):
+    def show_results_ui(self, metrics, wp_target, gamma_target):
         """Displays a modern, dark-themed result summary with Save Options."""
         res_win = tk.Toplevel(self.root)
-        res_win.title("Calibration Results")
-        res_win.geometry("650x550")
+        res_win.title("Pro Calibration Results")
+        res_win.geometry("650x650") # Slightly taller
         res_win.configure(bg="#1e1e1e")
         
-        # Ensure window is in front and takes focus
+        # Ensure window is in front
         res_win.lift()
         res_win.focus_force()
         res_win.grab_set()
         
         # Header
-        tk.Label(res_win, text="Kalibrasi Selesai", font=("Arial", 24, "bold"), bg="#1e1e1e", fg="white").pack(pady=(30, 5))
-        tk.Label(res_win, text=metrics['grade'], font=("Arial", 16), bg="#1e1e1e", fg="#00d1ff").pack(pady=(0, 20))
+        tk.Label(res_win, text="Kalibrasi Pro Selesai", font=("Arial", 22, "bold"), bg="#1e1e1e", fg="white").pack(pady=(20, 5))
+        
+        # Target Info
+        target_info = f"Target: {wp_target} | Gamma {gamma_target}"
+        tk.Label(res_win, text=target_info, font=("Arial", 11), bg="#1e1e1e", fg="#888").pack(pady=(0, 5))
+        
+        tk.Label(res_win, text=metrics['grade'], font=("Arial", 16, "bold"), bg="#1e1e1e", fg="#00d1ff").pack(pady=(0, 15))
         
         # Score Cards Frame
         score_frame = tk.Frame(res_win, bg="#1e1e1e")
@@ -434,6 +485,9 @@ class CalibrationApp:
         
         def save_action():
             target_dir = path_var.get()
+            wp_val = self.target_wp.get()
+            gamma_val = float(self.target_gamma.get().split()[0])
+            
             if not os.path.exists(target_dir):
                 try:
                     os.makedirs(target_dir)
@@ -447,18 +501,21 @@ class CalibrationApp:
             
             # Save ICC profile
             icc_path = os.path.join(target_dir, icc_name)
-            self.logic.generate_basic_icc(icc_path)
+            self.logic.generate_basic_icc(icc_path, wp_target=wp_val, gamma_target=gamma_val)
             
             self.logic.reset() # Clear data
             
-            messagebox.showinfo("Berhasil", f"Profil ICC berhasil disimpan ke:\n{icc_path}")
+            messagebox.showinfo("Berhasil", f"Profil ICC Pro berhasil disimpan ke:\n{icc_path}")
             res_win.destroy()
             
         def install_and_apply_action():
             from profile_manager import ProfileManager
+            wp_val = self.target_wp.get()
+            gamma_val = float(self.target_gamma.get().split()[0])
+
             # 1. Generate profile temporarily
             temp_icc = "temp_monitor_profile.icc"
-            self.logic.generate_basic_icc(temp_icc)
+            self.logic.generate_basic_icc(temp_icc, wp_target=wp_val, gamma_target=gamma_val)
             
             # 2. Install to system
             installed_path = ProfileManager.install_profile(temp_icc, "MuchCalibrated_Monitor.icc")
