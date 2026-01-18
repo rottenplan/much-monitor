@@ -12,123 +12,145 @@ from datetime import datetime
 class CalibrationApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Much Monitor Calibration")
-        self.root.geometry("500x600")
+        self.root.title("MUCH MONITOR PRO")
+        self.root.geometry("600x750")
+        self.root.configure(bg="#121212") # Deep Black Background
         
         self.logic = CalibrationLogic()
         self.camera = None
         self.preview_active = False
-        self.camera_map = {} # Maps display name to index
+        self.camera_map = {}
+        
+        # Color Palette
+        self.colors = {
+            "bg": "#121212",
+            "card": "#1E1E1E",
+            "accent": "#007AFF",
+            "accent_glow": "#00D1FF",
+            "text": "#FFFFFF",
+            "text_dim": "#AAAAAA",
+            "success": "#34C759",
+            "warning": "#FFCC00",
+            "error": "#FF3B30"
+        }
         
         self.setup_ui()
-        self.update_button_state()
         self.refresh_cameras()
         
     def setup_ui(self):
-        self.main_frame = tk.Frame(self.root, bg="#1e1e1e")
+        style = ttk.Style()
+        style.theme_use('clam')
+        
+        # Custom TScrollbar/Combobox style for Dark Theme
+        style.configure("TCombobox", fieldbackground=self.colors["bg"], background=self.colors["card"], foreground="white", arrowcolor="white")
+        style.map("TCombobox", fieldbackground=[('readonly', self.colors["bg"])], foreground=[('readonly', 'white')])
+
+        # Main Scrollable / Padded Container
+        self.main_frame = tk.Frame(self.root, bg=self.colors["bg"], padx=30, pady=30)
         self.main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # 1. HEADER SECTION
+        header_frame = tk.Frame(self.main_frame, bg=self.colors["bg"])
+        header_frame.pack(fill="x", pady=(0, 30))
         
-        self.label = tk.Label(
-            self.main_frame, 
-            text="Much Monitor Calibration", 
-            fg="#00d1ff", bg="#1e1e1e", # Cyan color for title
-            font=("Arial", 28, "bold")
-        )
-        self.label.pack(pady=(50, 20))
+        title_label = tk.Label(header_frame, text="MUCH MONITOR", font=("Inter", 24, "bold"), fg=self.colors["text"], bg=self.colors["bg"])
+        title_label.pack(anchor="w")
         
-        self.info_text = tk.Label(
-            self.main_frame,
-            text="Siapkan kamera smartphone Anda (Continuity Camera).\nLetakkan kamera menghadap layar tepat di tengah.",
-            fg="#00d1ff", bg="#1e1e1e", 
-            font=("Arial", 12),
-            justify=tk.CENTER
-        )
-        self.info_text.pack(pady=10)
-
-        # Camera selection label (Centered and On Top)
-        tk.Label(
-            self.main_frame, 
-            text="Pilih Kamera:", 
-            fg="#00d1ff", bg="#1e1e1e", 
-            font=("Arial", 12, "bold")
-        ).pack(pady=(10, 5))
-
-        # Camera selection controls frame
-        cam_frame = tk.Frame(self.main_frame, bg="#1e1e1e")
-        cam_frame.pack(pady=(0, 20))
-
-        self.cam_var = tk.StringVar()
-        self.cam_combo = ttk.Combobox(cam_frame, textvariable=self.cam_var, state="readonly", width=30)
-        self.cam_combo.grid(row=0, column=0, padx=5)
+        sub_title = tk.Label(header_frame, text="PROFESSIONAL COLOR CALIBRATOR v2.0", font=("Inter", 9, "bold"), fg=self.colors["accent_glow"], bg=self.colors["bg"])
+        sub_title.pack(anchor="w", pady=(0, 5))
         
-        self.refresh_btn = tk.Button(cam_frame, text="Refresh", command=self.refresh_cameras, bg="#444444", fg="black", font=("Arial", 10, "bold"))
-        self.refresh_btn.grid(row=0, column=1, padx=5)
+        separator = tk.Frame(header_frame, height=2, bg=self.colors["card"])
+        separator.pack(fill="x", pady=5)
 
-        self.status_cam_label = tk.Label(
-            self.main_frame, 
-            text="Mendeteksi kamera...", 
-            fg="#00d1ff", bg="#1e1e1e", 
-            font=("Arial", 10, "italic")
-        )
-        self.status_cam_label.pack(pady=5)
+        # 2. CAMERA SELECTION CARD
+        cam_card = tk.Frame(self.main_frame, bg=self.colors["card"], padx=20, pady=20, highlightthickness=1, highlightbackground="#333")
+        cam_card.pack(fill="x", pady=10)
+        
+        tk.Label(cam_card, text="PILIH KAMERA SENSOR", font=("Inter", 10, "bold"), fg=self.colors["text_dim"], bg=self.colors["card"]).pack(anchor="w", pady=(0, 10))
+        
+        cam_select_frame = tk.Frame(cam_card, bg=self.colors["card"])
+        cam_select_frame.pack(fill="x")
+        
+        self.cam_var = tk.StringVar() # Added this line as it was missing from the new setup_ui
+        self.cam_combo = ttk.Combobox(cam_select_frame, textvariable=self.cam_var, state="readonly", font=("Inter", 11))
+        self.cam_combo.pack(side=tk.LEFT, fill="x", expand=True, padx=(0, 10))
+        
+        self.refresh_btn = tk.Button(cam_select_frame, text="↺", font=("Inter", 14), command=self.refresh_cameras, bg="#333", fg="white", relief=tk.FLAT, borderwidth=0, cursor="hand2")
+        self.refresh_btn.pack(side=tk.RIGHT)
 
-        # Mock Mode Checkbox
+        self.status_cam_label = tk.Label(cam_card, text="Mencari kamera...", font=("Inter", 9), fg=self.colors["warning"], bg=self.colors["card"])
+        self.status_cam_label.pack(anchor="w", pady=(10, 0))
+
+        # Mock Mode Checkbox (Re-added as it was removed in the new setup_ui)
         self.mock_var = tk.BooleanVar(value=False)
         self.mock_check = tk.Checkbutton(
-            self.main_frame, 
+            cam_card, 
             text="Gunakan Mock Camera (Untuk Testing)", 
             variable=self.mock_var,
             command=self.update_button_state, # Update button when toggled
-            fg="#00d1ff", bg="#1e1e1e", 
+            fg=self.colors["text_dim"], bg=self.colors["card"], 
             selectcolor="#333",
-            activebackground="#1e1e1e",
-            activeforeground="#00d1ff",
-            font=("Arial", 11, "bold")
+            activebackground=self.colors["card"],
+            activeforeground=self.colors["accent_glow"],
+            font=("Inter", 10)
         )
-        self.mock_check.pack(pady=5)
+        self.mock_check.pack(anchor="w", pady=(10, 0))
 
-        self.perm_info = tk.Label(
-            self.main_frame,
-            text="PENTING: Pastikan Terminal/IDE memiliki izin Kamera di\nSystem Settings > Privacy & Security > Camera",
-            fg="#00d1ff", bg="#1e1e1e", 
-            font=("Arial", 11, "bold", "italic")
-        )
-        self.perm_info.pack(pady=10)
+        # 3. PRO TARGET SETTINGS CARD
+        target_card = tk.Frame(self.main_frame, bg=self.colors["card"], padx=20, pady=20, highlightthickness=1, highlightbackground="#333")
+        target_card.pack(fill="x", pady=10)
         
-        self.start_button = tk.Button(
-            self.main_frame,
-            text="Mulai Kalibrasi",
-            command=self.start_calibration,
-            bg="#007aff", fg="black",
-            font=("Arial", 16, "bold"),
-            padx=40, pady=20,
-            relief=tk.RAISED,
-            cursor="hand2"
-        )
-        self.start_button.pack(pady=(30, 10))
-
-        # Launch Menu Bar Helper Button (StudioICC companion)
-        self.menubar_btn.pack(pady=5)
-
-        # Target Settings Section
-        target_frame = tk.LabelFrame(self.main_frame, text="Target Calibration (Pro Settings)", fg="#ccc", bg="#1e1e1e", font=("Arial", 10, "bold"), padx=10, pady=10)
-        target_frame.pack(pady=10, fill="x", padx=40)
-
-        # White Point Target
-        tk.Label(target_frame, text="White Point Target:", fg="white", bg="#1e1e1e", font=("Arial", 9)).grid(row=0, column=0, sticky="w", pady=2)
-        self.target_wp = ttk.Combobox(target_frame, values=["D65 (6500K - Standard)", "D50 (5000K - Photography)"], state="readonly", width=25)
+        tk.Label(target_card, text="TARGET KALIBRASI", font=("Inter", 10, "bold"), fg=self.colors["text_dim"], bg=self.colors["card"]).pack(anchor="w", pady=(0, 15))
+        
+        grid_frame = tk.Frame(target_card, bg=self.colors["card"])
+        grid_frame.pack(fill="x")
+        
+        # WP
+        tk.Label(grid_frame, text="White Point", font=("Inter", 9), fg=self.colors["text"], bg=self.colors["card"]).grid(row=0, column=0, sticky="w", pady=5)
+        self.target_wp = ttk.Combobox(grid_frame, values=["D65 (6500K - Standard)", "D50 (5000K - Print)"], state="readonly", font=("Inter", 10))
         self.target_wp.current(0)
-        self.target_wp.grid(row=0, column=1, padx=10, pady=2)
-
-        # Gamma Target
-        tk.Label(target_frame, text="Gamma Target:", fg="white", bg="#1e1e1e", font=("Arial", 9)).grid(row=1, column=0, sticky="w", pady=2)
-        self.target_gamma = ttk.Combobox(target_frame, values=["2.2 (SDR Standard)", "2.4 (Video/Rec.709)"], state="readonly", width=25)
+        self.target_wp.grid(row=0, column=1, sticky="ew", padx=(20, 0), pady=5)
+        
+        # Gamma
+        tk.Label(grid_frame, text="Target Gamma", font=("Inter", 9), fg=self.colors["text"], bg=self.colors["card"]).grid(row=1, column=0, sticky="w", pady=5)
+        self.target_gamma = ttk.Combobox(grid_frame, values=["2.2 (SDR Standard)", "2.4 (Video/Rec.709)"], state="readonly", font=("Inter", 10))
         self.target_gamma.current(0)
-        self.target_gamma.grid(row=1, column=1, padx=10, pady=2)
+        self.target_gamma.grid(row=1, column=1, sticky="ew", padx=(20, 0), pady=5)
+        
+        grid_frame.columnconfigure(1, weight=1)
+
+        # 4. ACTION SECTION
+        action_frame = tk.Frame(self.main_frame, bg=self.colors["bg"])
+        action_frame.pack(fill="x", side=tk.BOTTOM, pady=20)
+
+        self.start_button = tk.Button(
+            action_frame,
+            text="MULAI KALIBRASI PRO",
+            command=self.start_calibration,
+            bg=self.colors["accent"], fg="white",
+            font=("Inter", 12, "bold"),
+            padx=20, pady=15,
+            relief=tk.FLAT,
+            borderwidth=0,
+            cursor="hand2",
+            activebackground=self.colors["accent_glow"]
+        )
+        self.start_button.pack(fill="x")
+
+        self.menubar_btn = tk.Button(
+            action_frame,
+            text="Launch StudioICC Companion (Menu Bar)",
+            command=self.launch_menubar_helper,
+            bg=self.colors["bg"], fg=self.colors["accent_glow"],
+            font=("Inter", 9, "underline"),
+            relief=tk.FLAT, borderwidth=0, cursor="hand2", pady=10,
+            activebackground=self.colors["bg"]
+        )
+        self.menubar_btn.pack()
 
         # Environment Tips
         tips_frame = tk.LabelFrame(self.main_frame, text="Tips Persiapan", fg="#ccc", bg="#1e1e1e", font=("Arial", 10, "bold"), padx=10, pady=10)
-        tips_frame.pack(pady=10, fill="x", padx=40)
+        tips_frame.pack(pady=10, fill="x", padx=0) # Changed padx to 0 to align with other cards
         
         tips = [
             "• Matikan lampu ruangan (Gelapkan ruangan)",
