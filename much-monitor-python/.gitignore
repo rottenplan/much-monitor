@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.ti3
+*.txt
+.DS_Store
+.venv/
+env/
+venv/
+*.jpg
+*.icc
+calibration_output/

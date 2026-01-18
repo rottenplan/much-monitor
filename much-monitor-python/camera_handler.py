@@ -79,11 +79,13 @@ class CameraHandler:
                 for i, dev in enumerate(devices):
                     try:
                         name = dev.localizedName()
-                        dtype = dev.deviceType()
+                        dtype = str(dev.deviceType())
                         
-                        # EXCLUDE DESK VIEW:
-                        # This camera is a digital crop from the Ultrawide and highly distorted.
-                        if "desk view" in name.lower() or "deskview" in dtype.lower():
+                        # STRICT FILTER: Exclude Virtual/Digital Software Cameras
+                        # We only want real physical lenses.
+                        virtual_keywords = ["desk view", "virtual", "software", "obs", "snap", "logi plus", "zoom"]
+                        if any(kw in name.lower() for kw in virtual_keywords):
+                            print(f"DEBUG: Skipping Virtual Camera -> {name}")
                             continue
                             
                         cameras.append((i, name))

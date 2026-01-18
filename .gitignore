@@ -1,11 +1,5 @@
-__pycache__/
-*.pyc
-*.ti3
-*.txt
+much-monitor-python/__pycache__/
 .DS_Store
-.venv/
-env/
-venv/
-*.jpg
-*.icc
-calibration_output/
+.vscode/
+much-monitor-swift/.build/
+much-monitor-swift/*.xcodeproj/

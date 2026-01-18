@@ -15,9 +15,11 @@ class ModernButton(tk.Label):
         super().__init__(parent, text=text, bg=bg, fg=fg, font=font, pady=pady, cursor="hand2", **kwargs)
         self.command = command
         self.default_bg = bg
-        self.hover_bg = self._adjust_brightness(bg, 1.2)
+        self.hover_bg = self._adjust_brightness(bg, 1.15)
+        self.pressed_bg = self._adjust_brightness(bg, 0.8)
         
-        self.bind("<Button-1>", lambda e: self.command())
+        self.bind("<Button-1>", self._on_press)
+        self.bind("<ButtonRelease-1>", self._on_release)
         self.bind("<Enter>", self._on_enter)
         self.bind("<Leave>", self._on_leave)
 
@@ -26,6 +28,13 @@ class ModernButton(tk.Label):
 
     def _on_leave(self, e):
         self.configure(bg=self.default_bg)
+
+    def _on_press(self, e):
+        self.configure(bg=self.pressed_bg)
+
+    def _on_release(self, e):
+        self.configure(bg=self.hover_bg)
+        self.command()
 
     def _adjust_brightness(self, hex_color, factor):
         hex_color = hex_color.lstrip('#')
@@ -70,8 +79,13 @@ class CalibrationApp:
         style.theme_use('clam')
         
         # Deep Black Canvas style for Combobox
-        style.configure("TCombobox", fieldbackground="#0A0A0A", background="#1E1E1E", foreground="#FFFFFF", arrowcolor="#FFFFFF", borderwidth=0)
-        style.map("TCombobox", fieldbackground=[('readonly', "#0F0F0F")], foreground=[('readonly', 'white')])
+        style.configure("TCombobox", fieldbackground="#0F0F0F", background="#1E1E1E", foreground="#FFFFFF", arrowcolor="#FFFFFF", borderwidth=0)
+        style.map("TCombobox", 
+            fieldbackground=[('readonly', "#0F0F0F"), ('focus', "#1A1A1A")], 
+            foreground=[('readonly', 'white')],
+            selectbackground=[('!disabled', "#007AFF")],
+            selectforeground=[('!disabled', "white")]
+        )
 
         self.main_container = tk.Frame(self.root, bg="#080808", padx=40, pady=25)
         self.main_container.pack(fill=tk.BOTH, expand=True)
