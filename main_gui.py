@@ -9,6 +9,30 @@ import os
 import threading
 from datetime import datetime
 
+class ModernButton(tk.Label):
+    """A custom flat button designed with tk.Label for perfect macOS aesthetics."""
+    def __init__(self, parent, text, command, bg="#007AFF", fg="white", font=("Inter", 11, "bold"), pady=12, **kwargs):
+        super().__init__(parent, text=text, bg=bg, fg=fg, font=font, pady=pady, cursor="hand2", **kwargs)
+        self.command = command
+        self.default_bg = bg
+        self.hover_bg = self._adjust_brightness(bg, 1.2)
+        
+        self.bind("<Button-1>", lambda e: self.command())
+        self.bind("<Enter>", self._on_enter)
+        self.bind("<Leave>", self._on_leave)
+
+    def _on_enter(self, e):
+        self.configure(bg=self.hover_bg)
+
+    def _on_leave(self, e):
+        self.configure(bg=self.default_bg)
+
+    def _adjust_brightness(self, hex_color, factor):
+        hex_color = hex_color.lstrip('#')
+        rgb = tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
+        new_rgb = tuple(min(255, int(c * factor)) for c in rgb)
+        return '#%02x%02x%02x' % new_rgb
+
 class CalibrationApp:
     def __init__(self, root):
         self.root = root
@@ -34,132 +58,114 @@ class CalibrationApp:
             "error": "#FF3B30"
         }
         
+        self.mock_var = tk.BooleanVar(value=False)
+        
         self.setup_ui()
         self.refresh_cameras()
         
     def setup_ui(self):
+        # 1. THEME & GLOBAL STYLE
         style = ttk.Style()
         style.theme_use('clam')
         
-        # Custom TScrollbar/Combobox style for Dark Theme
-        style.configure("TCombobox", fieldbackground=self.colors["bg"], background=self.colors["card"], foreground="white", arrowcolor="white")
-        style.map("TCombobox", fieldbackground=[('readonly', self.colors["bg"])], foreground=[('readonly', 'white')])
+        # Deep Black Canvas style for Combobox
+        style.configure("TCombobox", fieldbackground="#0A0A0A", background="#1E1E1E", foreground="#FFFFFF", arrowcolor="#FFFFFF", borderwidth=0)
+        style.map("TCombobox", fieldbackground=[('readonly', "#0F0F0F")], foreground=[('readonly', 'white')])
 
-        # Main Scrollable / Padded Container
-        self.main_frame = tk.Frame(self.root, bg=self.colors["bg"], padx=30, pady=30)
-        self.main_frame.pack(fill=tk.BOTH, expand=True)
+        self.main_container = tk.Frame(self.root, bg="#080808", padx=40, pady=40)
+        self.main_container.pack(fill=tk.BOTH, expand=True)
 
-        # 1. HEADER SECTION
-        header_frame = tk.Frame(self.main_frame, bg=self.colors["bg"])
-        header_frame.pack(fill="x", pady=(0, 30))
+        # 2. BRANDING / HEADER
+        header_frame = tk.Frame(self.main_container, bg="#080808")
+        header_frame.pack(fill="x", pady=(0, 40))
         
-        title_label = tk.Label(header_frame, text="MUCH MONITOR", font=("Inter", 24, "bold"), fg=self.colors["text"], bg=self.colors["bg"])
+        title_label = tk.Label(header_frame, text="MUCH MONITOR", font=("Inter", 26, "bold"), fg="#FFFFFF", bg="#080808")
         title_label.pack(anchor="w")
         
-        sub_title = tk.Label(header_frame, text="PROFESSIONAL COLOR CALIBRATOR v2.0", font=("Inter", 9, "bold"), fg=self.colors["accent_glow"], bg=self.colors["bg"])
+        sub_title = tk.Label(header_frame, text="PRO COLOR ENGINE v2.0", font=("Inter", 10, "bold"), fg="#00D1FF", bg="#080808")
         sub_title.pack(anchor="w", pady=(0, 5))
         
-        separator = tk.Frame(header_frame, height=2, bg=self.colors["card"])
-        separator.pack(fill="x", pady=5)
+        # Subtle accent line
+        tk.Frame(header_frame, height=2, bg="#1A1A1A").pack(fill="x", pady=(10, 0))
 
-        # 2. CAMERA SELECTION CARD
-        cam_card = tk.Frame(self.main_frame, bg=self.colors["card"], padx=20, pady=20, highlightthickness=1, highlightbackground="#333")
+        # 3. CAMERA ENGINE CARD (Borderless Elevation)
+        cam_card = tk.Frame(self.main_container, bg="#121212", padx=25, pady=25)
         cam_card.pack(fill="x", pady=10)
         
-        tk.Label(cam_card, text="PILIH KAMERA SENSOR", font=("Inter", 10, "bold"), fg=self.colors["text_dim"], bg=self.colors["card"]).pack(anchor="w", pady=(0, 10))
+        tk.Label(cam_card, text="KAMERA SENSOR", font=("Inter", 9, "bold"), fg="#555555", bg="#121212").pack(anchor="w", pady=(0, 15))
         
-        cam_select_frame = tk.Frame(cam_card, bg=self.colors["card"])
-        cam_select_frame.pack(fill="x")
+        combo_row = tk.Frame(cam_card, bg="#121212")
+        combo_row.pack(fill="x")
         
-        self.cam_var = tk.StringVar() # Added this line as it was missing from the new setup_ui
-        self.cam_combo = ttk.Combobox(cam_select_frame, textvariable=self.cam_var, state="readonly", font=("Inter", 11))
-        self.cam_combo.pack(side=tk.LEFT, fill="x", expand=True, padx=(0, 10))
+        self.cam_var = tk.StringVar()
+        self.cam_combo = ttk.Combobox(combo_row, textvariable=self.cam_var, state="readonly", font=("Inter", 11))
+        self.cam_combo.pack(side=tk.LEFT, fill="x", expand=True)
         
-        self.refresh_btn = tk.Button(cam_select_frame, text="↺", font=("Inter", 14), command=self.refresh_cameras, bg="#333", fg="white", relief=tk.FLAT, borderwidth=0, cursor="hand2")
-        self.refresh_btn.pack(side=tk.RIGHT)
+        # Custom Tiny Refresh Button using ModernButton logic internally but smaller
+        self.refresh_btn = tk.Label(combo_row, text="↺", font=("Inter", 16), bg="#1E1E1E", fg="white", width=3, cursor="hand2")
+        self.refresh_btn.pack(side=tk.RIGHT, padx=(15, 0))
+        self.refresh_btn.bind("<Button-1>", lambda e: self.refresh_cameras())
 
-        self.status_cam_label = tk.Label(cam_card, text="Mencari kamera...", font=("Inter", 9), fg=self.colors["warning"], bg=self.colors["card"])
-        self.status_cam_label.pack(anchor="w", pady=(10, 0))
+        self.status_cam_label = tk.Label(cam_card, text="Checking camera connectivity...", font=("Inter", 9), fg="#FFCC00", bg="#121212")
+        self.status_cam_label.pack(anchor="w", pady=(12, 0))
 
-        # Mock Mode Checkbox (Re-added as it was removed in the new setup_ui)
-        self.mock_var = tk.BooleanVar(value=False)
+        # Mock Mode
         self.mock_check = tk.Checkbutton(
-            cam_card, 
-            text="Gunakan Mock Camera (Untuk Testing)", 
-            variable=self.mock_var,
-            command=self.update_button_state, # Update button when toggled
-            fg=self.colors["text_dim"], bg=self.colors["card"], 
-            selectcolor="#333",
-            activebackground=self.colors["card"],
-            activeforeground=self.colors["accent_glow"],
-            font=("Inter", 10)
+            cam_card, text="Gunakan Mock Camera (Testing)", 
+            variable=self.mock_var, command=self.update_button_state,
+            fg="#666", bg="#121212", activeforeground="#00D1FF", activebackground="#121212",
+            selectcolor="#080808", font=("Inter", 9), borderwidth=0, highlightthickness=0
         )
         self.mock_check.pack(anchor="w", pady=(10, 0))
 
-        # 3. PRO TARGET SETTINGS CARD
-        target_card = tk.Frame(self.main_frame, bg=self.colors["card"], padx=20, pady=20, highlightthickness=1, highlightbackground="#333")
-        target_card.pack(fill="x", pady=10)
+        # 4. TARGET PARAMETERS CARD
+        param_card = tk.Frame(self.main_container, bg="#121212", padx=25, pady=25)
+        param_card.pack(fill="x", pady=10)
         
-        tk.Label(target_card, text="TARGET KALIBRASI", font=("Inter", 10, "bold"), fg=self.colors["text_dim"], bg=self.colors["card"]).pack(anchor="w", pady=(0, 15))
+        tk.Label(param_card, text="TARGET PARAMETER", font=("Inter", 9, "bold"), fg="#555555", bg="#121212").pack(anchor="w", pady=(0, 15))
         
-        grid_frame = tk.Frame(target_card, bg=self.colors["card"])
-        grid_frame.pack(fill="x")
+        grid = tk.Frame(param_card, bg="#121212")
+        grid.pack(fill="x")
+        grid.columnconfigure(1, weight=1)
         
-        # WP
-        tk.Label(grid_frame, text="White Point", font=("Inter", 9), fg=self.colors["text"], bg=self.colors["card"]).grid(row=0, column=0, sticky="w", pady=5)
-        self.target_wp = ttk.Combobox(grid_frame, values=["D65 (6500K - Standard)", "D50 (5000K - Print)"], state="readonly", font=("Inter", 10))
+        # White Point
+        tk.Label(grid, text="White Point", font=("Inter", 10), fg="#DDD", bg="#121212").grid(row=0, column=0, sticky="w", pady=8)
+        self.target_wp = ttk.Combobox(grid, values=["D65 (6500K)", "D50 (5000K)"], state="readonly", font=("Inter", 10))
         self.target_wp.current(0)
-        self.target_wp.grid(row=0, column=1, sticky="ew", padx=(20, 0), pady=5)
+        self.target_wp.grid(row=0, column=1, sticky="ew", padx=(30, 0))
         
         # Gamma
-        tk.Label(grid_frame, text="Target Gamma", font=("Inter", 9), fg=self.colors["text"], bg=self.colors["card"]).grid(row=1, column=0, sticky="w", pady=5)
-        self.target_gamma = ttk.Combobox(grid_frame, values=["2.2 (SDR Standard)", "2.4 (Video/Rec.709)"], state="readonly", font=("Inter", 10))
+        tk.Label(grid, text="Gamma", font=("Inter", 10), fg="#DDD", bg="#121212").grid(row=1, column=0, sticky="w", pady=8)
+        self.target_gamma = ttk.Combobox(grid, values=["2.2 (SDR)", "2.4 (Video)"], state="readonly", font=("Inter", 10))
         self.target_gamma.current(0)
-        self.target_gamma.grid(row=1, column=1, sticky="ew", padx=(20, 0), pady=5)
+        self.target_gamma.grid(row=1, column=1, sticky="ew", padx=(30, 0))
+
+        # 5. ENVIRONMENT TIPS (Low Profile)
+        tips_card = tk.Frame(self.main_container, bg="#0E0E0E", padx=20, pady=15)
+        tips_card.pack(fill="x", pady=(20, 0))
         
-        grid_frame.columnconfigure(1, weight=1)
+        tk.Label(tips_card, text="PRO TIPS: Redupkan lampu & bersihkan layar monitor.", font=("Inter", 9, "italic"), fg="#666", bg="#0E0E0E").pack()
 
-        # 4. ACTION SECTION
-        action_frame = tk.Frame(self.main_frame, bg=self.colors["bg"])
-        action_frame.pack(fill="x", side=tk.BOTTOM, pady=20)
+        # 6. ACTION DASHBOARD
+        action_frame = tk.Frame(self.main_container, bg="#080808")
+        action_frame.pack(fill="x", side=tk.BOTTOM)
 
-        self.start_button = tk.Button(
-            action_frame,
-            text="MULAI KALIBRASI PRO",
+        self.start_button = ModernButton(
+            action_frame, 
+            text="MULAI KALIBRASI PRO", 
             command=self.start_calibration,
-            bg=self.colors["accent"], fg="white",
-            font=("Inter", 12, "bold"),
-            padx=20, pady=15,
-            relief=tk.FLAT,
-            borderwidth=0,
-            cursor="hand2",
-            activebackground=self.colors["accent_glow"]
+            bg="#007AFF"
         )
-        self.start_button.pack(fill="x")
+        self.start_button.pack(fill="x", pady=(0, 10))
 
-        self.menubar_btn = tk.Button(
+        self.menubar_btn = ModernButton(
             action_frame,
-            text="Launch StudioICC Companion (Menu Bar)",
+            text="Launch StudioICC Companion",
             command=self.launch_menubar_helper,
-            bg=self.colors["bg"], fg=self.colors["accent_glow"],
-            font=("Inter", 9, "underline"),
-            relief=tk.FLAT, borderwidth=0, cursor="hand2", pady=10,
-            activebackground=self.colors["bg"]
+            bg="#181818", fg="#00D1FF", font=("Inter", 9, "bold"), pady=8
         )
-        self.menubar_btn.pack()
+        self.menubar_btn.pack(fill="x")
 
-        # Environment Tips
-        tips_frame = tk.LabelFrame(self.main_frame, text="Tips Persiapan", fg="#ccc", bg="#1e1e1e", font=("Arial", 10, "bold"), padx=10, pady=10)
-        tips_frame.pack(pady=10, fill="x", padx=0) # Changed padx to 0 to align with other cards
-        
-        tips = [
-            "• Matikan lampu ruangan (Gelapkan ruangan)",
-            "• Bersihkan layar monitor dari debu/sidik jari",
-            "• Set Brightness monitor ke level standar (50-100 cd/m2)",
-            "• Matikan Mode Night Shift / True Tone"
-        ]
-        for tip in tips:
-            tk.Label(tips_frame, text=tip, fg="#00d1ff", bg="#1e1e1e", font=("Arial", 9), justify=tk.LEFT).pack(anchor="w")
 
     def launch_menubar_helper(self):
         """Launches the standalone menu bar app as a background process."""
@@ -445,50 +451,48 @@ class CalibrationApp:
     def show_results_ui(self, metrics, wp_target, gamma_target):
         """Displays a modern, dark-themed result summary with Save Options."""
         res_win = tk.Toplevel(self.root)
-        res_win.title("Pro Calibration Results")
-        res_win.geometry("650x650") # Slightly taller
-        res_win.configure(bg="#1e1e1e")
+        res_win.title("MuchPro Analysis")
+        res_win.geometry("680x780")
+        res_win.configure(bg="#080808")
         
-        # Ensure window is in front
         res_win.lift()
         res_win.focus_force()
         res_win.grab_set()
         
+        content = tk.Frame(res_win, bg="#080808", padx=40, pady=40)
+        content.pack(fill=tk.BOTH, expand=True)
+
         # Header
-        tk.Label(res_win, text="Kalibrasi Pro Selesai", font=("Arial", 22, "bold"), bg="#1e1e1e", fg="white").pack(pady=(20, 5))
+        tk.Label(content, text="ANALISIS SELESAI", font=("Inter", 10, "bold"), fg="#00D1FF", bg="#080808", letterspacing=2).pack(pady=(0, 5))
+        tk.Label(content, text=metrics['grade'], font=("Inter", 24, "bold"), bg="#080808", fg="white").pack(pady=(0, 20))
         
-        # Target Info
-        target_info = f"Target: {wp_target} | Gamma {gamma_target}"
-        tk.Label(res_win, text=target_info, font=("Arial", 11), bg="#1e1e1e", fg="#888").pack(pady=(0, 5))
+        # Target Info Badge
+        target_badge = tk.Frame(content, bg="#1A1A1A", padx=15, pady=8)
+        target_badge.pack(pady=(0, 30))
+        tk.Label(target_badge, text=f"TARGET: {wp_target}  •  GAMMA {gamma_target}", font=("Inter", 9, "bold"), bg="#1A1A1A", fg="#888").pack()
+
+        # Score Row
+        score_row = tk.Frame(content, bg="#080808")
+        score_row.pack(fill="x", pady=10)
         
-        tk.Label(res_win, text=metrics['grade'], font=("Arial", 16, "bold"), bg="#1e1e1e", fg="#00d1ff").pack(pady=(0, 15))
+        self._create_score_card(score_row, "RAW DELTA-E", f"{metrics['avg_raw']:.1f}", "#444")
+        tk.Label(score_row, text="→", font=("Inter", 20), bg="#080808", fg="#222").pack(side=tk.LEFT, padx=15)
         
-        # Score Cards Frame
-        score_frame = tk.Frame(res_win, bg="#1e1e1e")
-        score_frame.pack(pady=10)
+        corrected_color = "#34C759" if metrics['avg_corrected'] < 2.0 else "#007AFF"
+        self._create_score_card(score_row, "PRO-CAL DELTA-E", f"{metrics['avg_corrected']:.1f}", corrected_color)
         
-        # Before Card
-        self._create_score_card(score_frame, "Sebelum (Raw Delta E)", f"{metrics['avg_raw']:.1f}", "#ff4444")
-        
-        # Arrow
-        tk.Label(score_frame, text="→", font=("Arial", 30), bg="#1e1e1e", fg="#666").pack(side=tk.LEFT, padx=20)
-        
-        # After Card
-        color = "#00FF00" if metrics['avg_corrected'] < 5 else "#FFA500"
-        self._create_score_card(score_frame, "Sesudah (Terkoreksi)", f"{metrics['avg_corrected']:.1f}", color)
-        
-        # Details
-        tk.Label(res_win, text=f"Peningkatan: +{metrics['improvement']:.1f}%", font=("Arial", 14), bg="#1e1e1e", fg="#aaaaaa").pack(pady=10)
-        
+        # Description
+        tk.Label(content, text=metrics['description'], font=("Inter", 11), bg="#080808", fg="#AAA", wraplength=500, pady=30).pack()
+
         # --- Save Location Section ---
-        save_frame = tk.LabelFrame(res_win, text="Lokasi Penyimpanan Profil", font=("Arial", 10, "bold"), bg="#1e1e1e", fg="#ccc", padx=10, pady=10)
-        save_frame.pack(pady=20, padx=20, fill="x")
-        
+        save_frame = tk.LabelFrame(content, text="Lokasi Penyimpanan Profil", font=("Arial", 10, "bold"), bg="#080808", fg="#ccc", padx=10, pady=10)
+        save_frame.pack(pady=20, padx=0, fill="x") # Adjusted padx to 0 to match content frame
+
         # Default Path
         default_dir = os.path.join(os.getcwd(), "calibration_output")
         path_var = tk.StringVar(value=default_dir)
         
-        entry_frame = tk.Frame(save_frame, bg="#1e1e1e")
+        entry_frame = tk.Frame(save_frame, bg="#080808")
         entry_frame.pack(fill="x")
         
         entry = tk.Entry(entry_frame, textvariable=path_var, bg="#333", fg="white", font=("Arial", 11), insertbackground="white")
@@ -502,8 +506,9 @@ class CalibrationApp:
         tk.Button(entry_frame, text="Browse...", command=browse_folder, bg="#444", fg="black").pack(side=tk.RIGHT)
 
         # Action Buttons
-        btn_frame = tk.Frame(res_win, bg="#1e1e1e")
-        btn_frame.pack(pady=20)
+        btn_frame = tk.Frame(content, bg="#080808") # Changed parent to content
+        btn_frame.pack(fill="x", pady=20) # Adjusted pady
+
         
         def save_action():
             target_dir = path_var.get()
@@ -559,21 +564,18 @@ class CalibrationApp:
                 self.logic.reset()
                 res_win.destroy()
         
-        tk.Button(btn_frame, text="Simpan Ke Folder...", command=save_action, 
-                  bg="#444", fg="black", font=("Arial", 12), relief="flat", padx=15, pady=8).pack(side=tk.LEFT, padx=5)
+        ModernButton(btn_frame, text="SIMPAN PROFIL (.ICC)", command=lambda: save_action(), bg="#00D1FF", fg="black").pack(fill="x", pady=5)
+        ModernButton(btn_frame, text="INSTAL & TERAPKAN (StudioICC Mode)", command=lambda: install_and_apply_action(), bg="#007AFF", fg="white").pack(fill="x", pady=5)
+        ModernButton(btn_frame, text="BUANG & ULANGI", command=lambda: discard_action(), bg="#1A1A1A", fg="white").pack(fill="x", pady=5)
 
-        tk.Button(btn_frame, text="INSTAL & TERAPKAN (StudioICC Mode)", command=install_and_apply_action, 
-                  bg="#00d1ff", fg="black", font=("Arial", 12, "bold"), relief="flat", padx=20, pady=8).pack(side=tk.LEFT, padx=5)
-                  
-        tk.Button(btn_frame, text="Buang", command=discard_action, 
-                  bg="#1e1e1e", fg="#ff4444", font=("Arial", 12), relief="flat", padx=10, pady=8).pack(side=tk.LEFT, padx=5)
 
     def _create_score_card(self, parent, title, value, color):
-        card = tk.Frame(parent, bg="#2a2a2a", padx=20, pady=15)
-        card.pack(side=tk.LEFT)
+        """Creates a modern flat score card."""
+        card = tk.Frame(parent, bg="#121212", padx=20, pady=20)
+        card.pack(side=tk.LEFT, expand=True, fill="both")
         
-        tk.Label(card, text=title, font=("Arial", 10), bg="#2a2a2a", fg="#bbb").pack()
-        tk.Label(card, text=value, font=("Arial", 36, "bold"), bg="#2a2a2a", fg=color).pack()
+        tk.Label(card, text=title, font=("Inter", 8, "bold"), fg="#555", bg="#121212").pack()
+        tk.Label(card, text=value, font=("Inter", 32, "bold"), fg=color, bg="#121212").pack(pady=10)
 
 if __name__ == "__main__":
     root = tk.Tk()
