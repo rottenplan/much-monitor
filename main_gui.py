@@ -183,7 +183,7 @@ class CalibrationApp:
             alert.configure(bg="#0F0F0F", highlightthickness=1, highlightbackground="#222")
             
             # Position
-            w, h = 380, 220
+            w, h = 380, 240
             sx = (self.root.winfo_screenwidth() - w) // 2
             sy = (self.root.winfo_screenheight() - h) // 2
             alert.geometry(f"{w}x{h}+{sx}+{sy}")
@@ -206,7 +206,7 @@ class CalibrationApp:
             footer = tk.Frame(content, bg="#0F0F0F")
             footer.pack(fill="x", side="bottom", pady=(20, 0))
             
-            ModernButton(footer, text="SIAP", command=alert.destroy, bg="#1A1A1A", fg="#00D1FF", font=("Inter", 10, "bold"), pady=10).pack(fill="x")
+            ModernButton(footer, text="SIAP", command=alert.destroy, bg="#1A1A1A", fg="#00D1FF", font=("Inter", 12, "bold"), pady=22).pack(fill="x")
             
             alert.grab_set()
             alert.focus_force()
