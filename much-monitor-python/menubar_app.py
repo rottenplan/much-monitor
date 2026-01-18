@@ -18,13 +18,6 @@ class MuchMonitorMenuBar(Cocoa.NSObject):
         self.updateMenu()
         self.statusitem.setMenu_(self.menu)
 
-        # Show a one-time alert to let user know it's running
-        alert = Cocoa.NSAlert.alloc().init()
-        alert.setMessageText_("Much Monitor Control Aktif!")
-        alert.setInformativeText_("Ikon 'MuchCalib' sekarang ada di menu bar Anda di pojok kanan atas.")
-        alert.addButtonWithTitle_("Siap!")
-        alert.runModal()
-
     def updateMenu(self):
         self.menu.removeAllItems()
         
@@ -43,9 +36,10 @@ class MuchMonitorMenuBar(Cocoa.NSObject):
             self.menu.addItem_(noneItem)
         else:
             for p in profiles:
-                name = os.path.basename(p)
+                # Use filename without extension as the display name and switch target
+                display_name = os.path.basename(p).replace(".icc", "").replace(".icm", "")
                 item = Cocoa.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(
-                    name, "switchProfile:", ""
+                    display_name, "switchProfile:", ""
                 )
                 item.setTarget_(self)
                 item.setRepresentedObject_(p)

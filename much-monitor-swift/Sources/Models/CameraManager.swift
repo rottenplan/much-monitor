@@ -8,9 +8,10 @@ class CameraManager: NSObject, ObservableObject {
     @Published var selectedDevice: AVCaptureDevice?
     @Published var currentFrame: CGImage?
     
-    private let session = AVCaptureSession()
+    let session = AVCaptureSession()
     private let videoOutput = AVCaptureVideoDataOutput()
     private let sessionQueue = DispatchQueue(label: "com.muchmonitor.sessionQueue")
+    private let ciContext = CIContext() // Reuse context for performance
     
     override init() {
         super.init()
@@ -18,8 +19,13 @@ class CameraManager: NSObject, ObservableObject {
     }
     
     func refreshCameras() {
+        var deviceTypes: [AVCaptureDevice.DeviceType] = [.builtInWideAngleCamera, .externalUnknown]
+        if #available(macOS 14.0, *) {
+            deviceTypes.append(.continuityCamera)
+        }
+        
         let discoverySession = AVCaptureDevice.DiscoverySession(
-            deviceTypes: [.builtInWideAngleCamera, .externalUnknown, .continuityCamera],
+            deviceTypes: deviceTypes,
             mediaType: .video,
             position: .unspecified
         )
@@ -37,6 +43,12 @@ class CameraManager: NSObject, ObservableObject {
         self.availableCameras = filtered.sorted { d1, d2 in
             let n1 = d1.localizedName.lowercased()
             let n2 = d2.localizedName.lowercased()
+            
+            // Priority 1: Specific User Device "iPhone 11"
+            if n1.contains("iphone 11") && !n2.contains("iphone 11") { return true }
+            if !n1.contains("iphone 11") && n2.contains("iphone 11") { return false }
+            
+            // Priority 2: Any iPhone
             if n1.contains("iphone") && !n2.contains("iphone") { return true }
             return false
         }
@@ -78,14 +90,104 @@ class CameraManager: NSObject, ObservableObject {
             self.session.stopRunning()
         }
     }
+    
+    func lockConfiguration() {
+        guard let device = selectedDevice else { return }
+        do {
+            try device.lockForConfiguration()
+            
+            // 1. Lock Focus
+            if device.isFocusModeSupported(.locked) {
+                device.focusMode = .locked
+            }
+            
+            // 2. Lock Exposure
+            if device.isExposureModeSupported(.locked) {
+                device.exposureMode = .locked
+            }
+            
+            // 3. Lock White Balance
+            if device.isWhiteBalanceModeSupported(.locked) {
+                device.whiteBalanceMode = .locked
+                print("Locked WB to Current Values.")
+            }
+            
+            device.unlockForConfiguration()
+            print("Camera configuration LOCKED for calibration.")
+        } catch {
+            print("Failed to lock camera configuration: \(error)")
+        }
+    }
+    
+    func unlockConfiguration() {
+        guard let device = selectedDevice else { return }
+        do {
+            try device.lockForConfiguration()
+            
+            if device.isFocusModeSupported(.continuousAutoFocus) {
+                device.focusMode = .continuousAutoFocus
+            }
+            
+            if device.isExposureModeSupported(.continuousAutoExposure) {
+                device.exposureMode = .continuousAutoExposure
+            }
+            
+            if device.isWhiteBalanceModeSupported(.continuousAutoWhiteBalance) {
+                device.whiteBalanceMode = .continuousAutoWhiteBalance
+            }
+            
+            device.unlockForConfiguration()
+            print("Camera configuration UNLOCKED.")
+        } catch {
+            print("Failed to unlock camera configuration: \(error)")
+        }
+    }
+    
+    func getAverageRGB() -> (r: Double, g: Double, b: Double)? {
+        guard let cgImage = self.currentFrame else { return nil }
+        
+        // Use CoreImage to get average color of the center region
+        let ciImage = CIImage(cgImage: cgImage)
+        let extent = ciImage.extent
+        
+        // Sample Center 1/4 Area (Center 50% width x 50% height) to avoid vignetting/edges
+        let cropW = extent.width * 0.5
+        let cropH = extent.height * 0.5
+        let cropRect = CGRect(
+            x: (extent.width - cropW) / 2.0,
+            y: (extent.height - cropH) / 2.0,
+            width: cropW,
+            height: cropH
+        )
+        
+        // Filter: Area Average
+        let filter = CIFilter(name: "CIAreaAverage")
+        filter?.setValue(ciImage, forKey: kCIInputImageKey)
+        filter?.setValue(CIVector(cgRect: cropRect), forKey: kCIInputExtentKey)
+        
+        guard let outputImage = filter?.outputImage else { return nil }
+        
+        var bitmap = [UInt8](repeating: 0, count: 4)
+        // Use persistent context
+        self.ciContext.render(outputImage, 
+                      toBitmap: &bitmap, 
+                      rowBytes: 4, 
+                      bounds: CGRect(x: 0, y: 0, width: 1, height: 1), 
+                      format: .RGBA8, 
+                      colorSpace: nil)
+        
+        // Convert to 0-255 Double
+        return (Double(bitmap[0]), Double(bitmap[1]), Double(bitmap[2]))
+    }
 }
 
 extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        // Create CIImage from buffer
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-        let context = CIContext()
-        if let cgImage = context.createCGImage(ciImage, from: ciImage.extent) {
+        // Use persistent context
+        if let cgImage = self.ciContext.createCGImage(ciImage, from: ciImage.extent) {
             DispatchQueue.main.async {
                 self.currentFrame = cgImage
             }

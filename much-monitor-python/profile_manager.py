@@ -65,40 +65,62 @@ class ProfileManager:
 
     @staticmethod
     def set_display_profile_applescript(profile_name):
-        """Uses AppleScript to set the display profile via System Settings."""
+        """Uses AppleScript to set the display profile via System Settings (Ventura+)."""
         import subprocess
+        
+        # This script tries multiple potential UI paths for Ventura/Sonoma
         script = f'''
+        set profileName to "{profile_name}"
+        
         tell application "System Settings"
             activate
-            reveal anchor "displaysDisplayTab" __of_ __parent__ __id__ "com.apple.Displays-Settings.extension"
-            delay 1
+            -- Open Displays pane
+            reveal anchor "displaysDisplayTab" of pane id "com.apple.Displays-Settings.extension"
         end tell
+        
+        delay 1.5
+        
         tell application "System Events"
             tell process "System Settings"
                 try
-                    -- Click the profile pop-up button
-                    click pop up button 1 of group 1 of scroll area 1 of group 1 of group 2 of splitter group 1 of group 1 of window "Displays"
+                    -- Ventura UI Path: Most common hierarchy
+                    set popUp to pop up button 1 of group 1 of scroll area 1 of group 1 of group 2 of splitter group 1 of group 1 of window 1
+                    click popUp
                     delay 0.5
-                    -- Select the profile
-                    click menu item "{profile_name}" of menu 1 of pop up button 1 of group 1 of scroll area 1 of group 1 of group 2 of splitter group 1 of group 1 of window "Displays"
+                    click menu item profileName of menu 1 of popUp
                     return "Success"
-                on error
-                    return "Failed"
-                end try
+                on error err
+                    try
+                        -- Fallback: Search for pop up button by description or name
+                        set allPopUps to every pop up button of (every group of scroll area 1 of group 1 of group 2 of splitter group 1 of group 1 of window 1)
+                        -- This is more complex, let's just try to click the one that looks like a profile picker
+                        return "Alternative path needed: " & err
+                    on error
+                        return "Failed: " & err
+                    end try
+                end error
             end tell
         end tell
         '''
-        # Note: The UI hierarchy varies between macOS versions. 
-        # For now, let's provide a simpler version that just opens the settings if complex scripting fails.
-        simple_script = f'open "x-apple.systempreferences:com.apple.Displays-Settings.extension"'
         
         try:
-            print(f"Attempting to set profile to '{profile_name}' via System Settings...")
-            # We just open the settings for now and let the user see it's there
-            # because complex UI scripting is fragile across OS versions.
+            print(f"Attempting to set profile to '{profile_name}' via System Settings (Ventura)...")
+            # We first try to just open it to give user a chance
             subprocess.run(["open", "x-apple.systempreferences:com.apple.Displays-Settings.extension"])
-            return True
-        except:
+            
+            # Then we run the script to perform the click
+            # We use osascript to run the above
+            full_cmd = ["osascript", "-e", script]
+            result = subprocess.run(full_cmd, capture_output=True, text=True)
+            print(f"AppleScript Result: {result.stdout.strip()}")
+            
+            if "Success" in result.stdout:
+                return True
+                
+            # If script failed, the settings window is at least open now.
+            return False
+        except Exception as e:
+            print(f"Error in AppleScript execution: {e}")
             return False
 
     @staticmethod
