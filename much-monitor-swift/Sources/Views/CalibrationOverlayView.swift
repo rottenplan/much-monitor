@@ -43,10 +43,20 @@ struct CalibrationOverlayView: View {
                     .ignoresSafeArea()
                 
                 // 2. Alignment Guide (Phone Outline Only, No Circle)
-                ZStack {
-                    RoundedRectangle(cornerRadius: 35)
-                        .stroke(Color.white.opacity(0.3), lineWidth: 3)
-                        .frame(width: 350, height: 750) // Enlarged Guide
+                VStack(spacing: 20) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 35)
+                            .stroke(Color.white.opacity(0.3), lineWidth: 3)
+                            .frame(width: 350, height: 750) // Enlarged Guide
+                    }
+                    
+                    Text("Posisikan kamera HP Anda pas di garis ini.\nPastikan lensa bersih & cahaya ruangan redup.")
+                        .font(.system(size: 14, weight: .medium))
+                        .multilineTextAlignment(.center)
+                        .foregroundColor(.white.opacity(0.9))
+                        .padding(12)
+                        .background(Color.black.opacity(0.6))
+                        .cornerRadius(10)
                 }
                 .position(x: geometry.size.width / 2, y: geometry.size.height / 2)
                 
