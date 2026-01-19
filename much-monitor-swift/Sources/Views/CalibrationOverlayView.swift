@@ -116,18 +116,42 @@ struct CalibrationOverlayView: View {
                                 }
                             }) {
                                 HStack {
-                                    Image(systemName: isCalibrating ? "stop.circle.fill" : "play.circle.fill")
-                                    Text(isCalibrating ? "STOP" : "START MANUAL")
+                                    if !appState.cameraManager.isReceivingFrames {
+                                        Image(systemName: "video.slash.fill")
+                                        Text("WAITING FOR CAMERA...")
+                                    } else {
+                                        Image(systemName: isCalibrating ? "stop.circle.fill" : "play.circle.fill")
+                                        Text(isCalibrating ? "STOP" : "START MANUAL")
+                                    }
                                 }
                                 .font(.system(size: 14, weight: .bold))
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 12)
-                                .background(isCalibrating ? Color.red.opacity(0.8) : Color.blue.opacity(0.8))
+                                .background(getButtonColor())
                                 .foregroundColor(.white)
                                 .cornerRadius(8)
                             }
                             .buttonStyle(.plain)
+                            .disabled(!appState.cameraManager.isReceivingFrames && !isCalibrating)
                             .frame(width: 320) // Match preview width
+                            
+                            // 5. Back Button
+                            Button(action: {
+                                stopCalibration()
+                            }) {
+                                HStack {
+                                    Image(systemName: "arrow.uturn.backward.circle")
+                                    Text("KEMBALI KE MENU")
+                                }
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(.white.opacity(0.8))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(Color.gray.opacity(0.3))
+                                .cornerRadius(8)
+                            }
+                            .buttonStyle(.plain)
+                            .frame(width: 320)
                         }
                         .padding(40)
                     }
@@ -275,6 +299,13 @@ struct CalibrationOverlayView: View {
         dismiss()
     }
     
+    func getButtonColor() -> Color {
+        if !appState.cameraManager.isReceivingFrames && !isCalibrating {
+            return Color.gray.opacity(0.5)
+        }
+        return isCalibrating ? Color.red.opacity(0.8) : Color.blue.opacity(0.8)
+    }
+    
     func toggleCalibrationMode(_ enable: Bool, for specificWindow: NSWindow? = nil) {
         DispatchQueue.main.async {
             // Use specific window if provided, else captured, else keyWindow
@@ -317,18 +348,24 @@ struct CameraPreview: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
         view.wantsLayer = true
+        view.layer?.backgroundColor = NSColor.black.cgColor
         
         let previewLayer = AVCaptureVideoPreviewLayer(session: session)
+        previewLayer.name = "cameraPreview"
         previewLayer.videoGravity = .resizeAspectFill
-        previewLayer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
+        // Don't auto-resize, we handle frame in layout
         
-        view.layer = previewLayer
+        view.layer?.addSublayer(previewLayer)
         return view
     }
     
     func updateNSView(_ nsView: NSView, context: Context) {
-        if let layer = nsView.layer as? AVCaptureVideoPreviewLayer {
+        if let layer = nsView.layer?.sublayers?.first(where: { $0.name == "cameraPreview" }) as? AVCaptureVideoPreviewLayer {
             layer.frame = nsView.bounds
+            // Ensure session is connected if changed (though session is usually constant)
+            if layer.session != session {
+                layer.session = session
+            }
         }
     }
 }

@@ -13,6 +13,12 @@ class CameraManager: NSObject, ObservableObject {
     private let sessionQueue = DispatchQueue(label: "com.muchmonitor.sessionQueue")
     private let ciContext = CIContext() // Reuse context for performance
     
+    // Frame Tracking
+    @Published var isReceivingFrames: Bool = false
+    private var lastFrameTime: Date?
+    private var healthCheckTimer: Timer?
+
+    
     override init() {
         super.init()
         refreshCameras()
@@ -59,7 +65,18 @@ class CameraManager: NSObject, ObservableObject {
     }
     
     func startSession() {
-        guard let device = selectedDevice else { return }
+        guard let device = selectedDevice else { 
+            print("CameraManager: No device selected to start session.")
+            return 
+        }
+        
+        print("CameraManager: Attempting to start session with device: \(device.localizedName)")
+        
+        // Start Health Check on Main Thread
+        DispatchQueue.main.async {
+            self.startHealthCheck()
+        }
+        
         sessionQueue.async {
             self.session.beginConfiguration()
             
@@ -70,25 +87,51 @@ class CameraManager: NSObject, ObservableObject {
                 let input = try AVCaptureDeviceInput(device: device)
                 if self.session.canAddInput(input) {
                     self.session.addInput(input)
+                    print("CameraManager: Input added.")
+                } else {
+                    print("CameraManager: Could not add input.")
                 }
                 
                 if self.session.canAddOutput(self.videoOutput) {
                     self.session.addOutput(self.videoOutput)
                     self.videoOutput.setSampleBufferDelegate(self, queue: DispatchQueue(label: "videoQueue"))
+                    print("CameraManager: Output added.")
                 }
                 
                 self.session.commitConfiguration()
                 self.session.startRunning()
+                print("CameraManager: Session startRunning() called. Running: \(self.session.isRunning)")
             } catch {
-                print("Error setting up camera: \(error)")
+                print("CameraManager: Error setting up camera: \(error)")
             }
         }
     }
     
     func stopSession() {
+        DispatchQueue.main.async {
+            self.stopHealthCheck()
+            self.isReceivingFrames = false
+        }
         sessionQueue.async {
             self.session.stopRunning()
         }
+    }
+    
+    private func startHealthCheck() {
+        stopHealthCheck()
+        self.healthCheckTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            if let last = self.lastFrameTime, Date().timeIntervalSince(last) < 2.0 {
+                if !self.isReceivingFrames { self.isReceivingFrames = true }
+            } else {
+                if self.isReceivingFrames { self.isReceivingFrames = false }
+            }
+        }
+    }
+    
+    private func stopHealthCheck() {
+        healthCheckTimer?.invalidate()
+        healthCheckTimer = nil
     }
     
     func lockConfiguration() {
@@ -190,6 +233,8 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
         if let cgImage = self.ciContext.createCGImage(ciImage, from: ciImage.extent) {
             DispatchQueue.main.async {
                 self.currentFrame = cgImage
+                self.lastFrameTime = Date()
+                if !self.isReceivingFrames { self.isReceivingFrames = true }
             }
         }
     }
