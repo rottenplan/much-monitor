@@ -49,7 +49,7 @@ struct ResultsView: View {
                 Button(action: { dismiss() }) {
                     HStack(spacing: 5) {
                         Image(systemName: "chevron.left")
-                        Text("KEMBALI")
+                        Text("BACK")
                     }
                     .font(.system(size: 11, weight: .bold))
                     .foregroundColor(.gray)
@@ -70,7 +70,7 @@ struct ResultsView: View {
                 VStack(spacing: 25) {
                     // Header
                     VStack(spacing: 8) {
-                        Text("ANALISIS SELESAI")
+                        Text("ANALYSIS COMPLETE")
                             .font(.system(size: 10, weight: .bold))
                             .foregroundColor(accentColor)
                         
@@ -120,8 +120,8 @@ struct ResultsView: View {
                     }
                     
                     // Description
-                    let description = (metrics?["description"] as? String) ?? "Monitor Anda sekarang dikalibrasi sesuai standar industri. Akurasi warna telah ditingkatkan secara signifikan."
-                    let isError = description.contains("ERROR") || description.contains("Gagal")
+                    let description = (metrics?["description"] as? String) ?? "Your monitor is now calibrated to industry standards. Color accuracy has been significantly improved."
+                    let isError = description.contains("ERROR") || description.contains("Failed")
                     
                     Text(description)
                         .font(.system(size: 12))
@@ -131,13 +131,13 @@ struct ResultsView: View {
                     
                     // Save Location Section
                     VStack(alignment: .leading, spacing: 12) {
-                        Text("PENGATURAN PENYIMPANAN")
+                        Text("SAVE SETTINGS")
                             .font(.system(size: 10, weight: .bold))
                             .foregroundColor(.gray)
                         
                         VStack(spacing: 10) {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("Nama Profil")
+                                Text("Profile Name")
                                     .font(.system(size: 9, weight: .bold))
                                     .foregroundColor(.gray)
                                 TextField("", text: $profileName)
@@ -148,7 +148,7 @@ struct ResultsView: View {
                             }
                             
                             VStack(alignment: .leading, spacing: 4) {
-                                Text("Lokasi")
+                                Text("Location")
                                     .font(.system(size: 9, weight: .bold))
                                     .foregroundColor(.gray)
                                 HStack {
@@ -162,7 +162,7 @@ struct ResultsView: View {
                                         .background(Color(white: 0.12))
                                         .cornerRadius(6)
                                     
-                                    Button("Pilih...") {
+                                    Button("Choose...") {
                                         selectFolder()
                                     }
                                     .font(.system(size: 10, weight: .bold))
@@ -182,11 +182,11 @@ struct ResultsView: View {
                     // Action Buttons
                     VStack(spacing: 12) {
                         HStack(spacing: 12) {
-                            ModernButton(title: "SIMPAN PROFIL (.ICC)", action: {
+                            ModernButton(title: "SAVE PROFILE (.ICC)", action: {
                                 saveProfile()
                             }, backgroundColor: accentColor, foregroundColor: .black)
                             
-                            ModernButton(title: "APPLY OTOMATIS", action: {
+                            ModernButton(title: "AUTO APPLY", action: {
                                 installAndApply()
                             }, backgroundColor: Color.green, foregroundColor: .black)
                         }
@@ -203,7 +203,7 @@ struct ResultsView: View {
                             .buttonStyle(.plain)
                         }
                         
-                        Button("KEMBALI KE MENU UTAMA (TUTUP)") {
+                        Button("BACK TO MAIN MENU (CLOSE)") {
                             dismiss()
                         }
                         .font(.system(size: 11, weight: .bold))
@@ -221,7 +221,7 @@ struct ResultsView: View {
         .background(Color(red: 0.03, green: 0.03, blue: 0.03))
         .preferredColorScheme(.dark)
         .alert(isPresented: $showSuccessAlert) {
-            Alert(title: Text("Berhasil"), message: Text(successMessage), dismissButton: .default(Text("OK")))
+            Alert(title: Text("Success"), message: Text(successMessage), dismissButton: .default(Text("OK")))
         }
     }
     
@@ -252,7 +252,7 @@ struct ResultsView: View {
         }
         
         if generator.createProfile(url: fileURL) {
-            successMessage = "Profil ICC Pro berhasil disimpan ke:\n\(fileURL.path)"
+            successMessage = "ICC Pro Profile saved to:\n\(fileURL.path)"
             showSuccessAlert = true
         }
     }
@@ -267,7 +267,7 @@ struct ResultsView: View {
         if generator.createProfile(url: tempURL) {
             if let installedURL = ProfileManager.shared.installProfile(srcURL: tempURL, name: "\(profileName).icc") {
                 _ = ProfileManager.shared.setDisplayProfile(profileURL: installedURL)
-                successMessage = "Profil telah DIINSTAL dan DITERAPKAN ke layar Anda!"
+                successMessage = "Profile INSTALLED and APPLIED to your display!"
                 showSuccessAlert = true
             }
         }
@@ -279,13 +279,13 @@ struct ResultsView: View {
         
         do {
             try csv.write(to: fileURL, atomically: true, encoding: .utf8)
-            successMessage = "Data Log CSV berhasil diexport ke:\n\(fileURL.path)"
+            successMessage = "CSV Log exported to:\n\(fileURL.path)"
             showSuccessAlert = true
             
             // Open folder
             NSWorkspace.shared.selectFile(fileURL.path, inFileViewerRootedAtPath: fileURL.deletingLastPathComponent().path)
         } catch {
-            successMessage = "Gagal export CSV: \(error.localizedDescription)"
+            successMessage = "Failed to export CSV: \(error.localizedDescription)"
             showSuccessAlert = true
         }
     }

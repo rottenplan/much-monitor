@@ -20,13 +20,26 @@ struct ContentView: View {
             // 1. DASHBOARD UI
             VStack(alignment: .leading, spacing: 25) {
                 // Header
-                HStack(alignment: .top) {
+                HStack(alignment: .center, spacing: 15) {
+                    if let logoPath = Bundle.main.path(forResource: "AppLogo", ofType: "png"),
+                       let nsImage = NSImage(contentsOfFile: logoPath) {
+                        Image(nsImage: nsImage)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(width: 48, height: 48)
+                    } else {
+                        // Fallback
+                        Image(systemName: "display")
+                            .font(.system(size: 40))
+                            .foregroundColor(accentColor)
+                    }
+                    
                     VStack(alignment: .leading, spacing: 4) {
                         Text("MUCH MONITOR")
-                            .font(.system(size: 32, weight: .bold))
+                            .font(.system(size: 24, weight: .bold))
                             .foregroundColor(.white)
                         Text("PRO COLOR ENGINE v2.0 (NATIVE)")
-                            .font(.system(size: 12, weight: .bold))
+                            .font(.system(size: 10, weight: .bold))
                             .foregroundColor(accentColor)
                     }
                     
@@ -58,7 +71,7 @@ struct ContentView: View {
                 VStack(spacing: 20) {
                     // Camera Card
                     VStack(alignment: .leading, spacing: 15) {
-                        Text("KAMERA SENSOR")
+                        Text("CAMERA SENSOR")
                             .font(.system(size: 11, weight: .bold))
                             .foregroundColor(.gray)
                         
@@ -87,13 +100,13 @@ struct ContentView: View {
                             .buttonStyle(.plain)
                         }
                         
-                        Toggle("Gunakan Mock Camera (Testing)", isOn: $appState.useMock)
+                        Toggle("Use Mock Camera (Testing)", isOn: $appState.useMock)
                             .font(.system(size: 10))
                             .foregroundColor(.gray)
                             
                             // 2. Color Space Selection
                             VStack(alignment: .leading, spacing: 6) {
-                                Text("TARGET GAMUT (RUANG WARNA)")
+                                Text("TARGET GAMUT (COLOR SPACE)")
                                     .font(.system(size: 11, weight: .bold))
                                     .foregroundColor(.gray)
                                 
@@ -112,7 +125,7 @@ struct ContentView: View {
                             
                             // 3. Sensor Model Selection
                             VStack(alignment: .leading, spacing: 6) {
-                                Text("OPTIMISASI SENSOR")
+                                Text("SENSOR OPTIMIZATION")
                                     .font(.system(size: 11, weight: .bold))
                                     .foregroundColor(.gray)
                                 
@@ -133,7 +146,7 @@ struct ContentView: View {
                             
                             // 4. Start Button Hint
                              VStack(spacing: 6) {
-                                Text("SIAP KALIBRASI?")
+                                Text("READY TO CALIBRATE?")
                                     .font(.system(size: 11, weight: .bold))
                                     .foregroundColor(.gray)
                             }
@@ -173,14 +186,14 @@ struct ContentView: View {
                     .background(Color(red: 0.07, green: 0.07, blue: 0.07))
                     .cornerRadius(12)
                     
-                    Text("PRO TIPS: Redupkan lampu & bersihkan layar monitor.")
+                    Text("PRO TIPS: Dim the lights & clean the screen.")
                         .font(.system(size: 11, weight: .medium).italic())
                         .foregroundColor(.gray)
                         .padding(.top, 5)
                     
                     // Action Dashboard
                     VStack(spacing: 12) {
-                        ModernButton(title: "MULAI KALIBRASI", action: {
+                        ModernButton(title: "START CALIBRATION", action: {
                             openWindow(id: "calibration")
                         }, backgroundColor: Color.blue)
                         
@@ -199,9 +212,9 @@ struct ContentView: View {
         .preferredColorScheme(.dark)
         .alert(isPresented: $showCompanionAlert) {
             Alert(
-                title: Text("Much Monitor Control Aktif!"),
-                message: Text("Menubar Companion sekarang aktif di sistem Anda. Cek bar menu bagian atas untuk akses cepat."),
-                dismissButton: .default(Text("SAYA MENGERTI"))
+                title: Text("Control Companion Active!"),
+                message: Text("Menubar Companion is now active on your system. Check the top menu bar for quick access."),
+                dismissButton: .default(Text("GOT IT"))
             )
         }
         .sheet(isPresented: $showAbout) {
@@ -278,10 +291,26 @@ struct AboutView: View {
             .padding(.top, 20)
             .padding(.horizontal, 20)
             
-            Image(systemName: "cpu.fill")
-                .font(.system(size: 60))
-                .foregroundColor(accentColor)
-                .padding(.bottom, 10)
+            if let logoPath = Bundle.main.path(forResource: "AppLogo", ofType: "png"),
+               let nsImage = NSImage(contentsOfFile: logoPath) {
+                Image(nsImage: nsImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 100, height: 100)
+                    .padding(.bottom, 10)
+            } else if let devImage = NSImage(contentsOfFile: "/Users/muchdas/Documents/Anti Gravity/much-monitor/much-monitor-swift/Resources/AppLogo.png") {
+                 // Fallback for swift run (dev environment)
+                 Image(nsImage: devImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 100, height: 100)
+                    .padding(.bottom, 10)
+            } else {
+                Image(systemName: "cpu.fill")
+                    .font(.system(size: 60))
+                    .foregroundColor(accentColor)
+                    .padding(.bottom, 10)
+            }
             
             VStack(spacing: 8) {
                 Text("MUCH MONITOR PRO")
@@ -293,7 +322,7 @@ struct AboutView: View {
             }
             
             VStack(spacing: 15) {
-                Text("Dibuat dengan ❤️ untuk komunitas kreatif dan profesional warna. Aplikasi ini dirancang untuk memberikan akurasi warna level studio menggunakan sensor kamera native.")
+                Text("Created for the creative community and color professionals.\nThis application is designed to provide studio-level color accuracy using native camera sensors.")
                     .font(.system(size: 13))
                     .foregroundColor(.gray)
                     .multilineTextAlignment(.center)

@@ -50,7 +50,7 @@ struct CalibrationOverlayView: View {
                             .frame(width: 350, height: 750) // Enlarged Guide
                     }
                     
-                    Text("Posisikan kamera HP Anda pas di garis ini.\nPastikan lensa bersih & cahaya ruangan redup.")
+                    Text("Position your phone camera exactly on this line.\nEnsure the lens is clean & room lighting is dim.")
                         .font(.system(size: 14, weight: .medium))
                         .multilineTextAlignment(.center)
                         .foregroundColor(.white.opacity(0.9))
@@ -94,7 +94,7 @@ struct CalibrationOverlayView: View {
                             
                             // Info / Step Counter
                             VStack(alignment: .trailing, spacing: 6) {
-                                Text(isCalibrating ? "PROSES KALIBRASI" : "SIAP MENYAMBUNGKAN")
+                                Text(isCalibrating ? "CALIBRATION PROCESS" : "READY TO CONNECT")
                                     .font(.system(size: 10, weight: .bold))
                                     .foregroundColor(.gray)
                                 
@@ -103,11 +103,11 @@ struct CalibrationOverlayView: View {
                                     .foregroundColor(.white)
                                 
                                 if isPaused {
-                                    Text("PAUSED: Validasi Gagal")
+                                    Text("PAUSED: Validation Failed")
                                         .foregroundColor(.yellow)
                                         .font(.system(size: 12, weight: .bold))
                                 } else {
-                                    Text(isCalibrating ? "Membaca warna..." : "Menunggu Start...")
+                                    Text(isCalibrating ? "Reading colors..." : "Waiting for Start...")
                                         .foregroundColor(.white.opacity(0.7))
                                         .font(.system(size: 12))
                                 }
@@ -151,7 +151,7 @@ struct CalibrationOverlayView: View {
                             }) {
                                 HStack {
                                     Image(systemName: "arrow.uturn.backward.circle")
-                                    Text("KEMBALI KE MENU")
+                                    Text("BACK TO MENU")
                                 }
                                 .font(.system(size: 14, weight: .bold))
                                 .foregroundColor(.white.opacity(0.8))
@@ -178,7 +178,7 @@ struct CalibrationOverlayView: View {
                                 .font(.system(size: 60))
                                 .foregroundColor(.yellow)
                             
-                            Text("VALIDASI WARNA GAGAL")
+                            Text("COLOR VALIDATION FAILED")
                                 .font(.system(size: 24, weight: .bold))
                                 .foregroundColor(.white)
                             
@@ -188,11 +188,11 @@ struct CalibrationOverlayView: View {
                                 .padding(.horizontal, 40)
                                 .multilineTextAlignment(.center)
                             
-                            Text("Mohon perbaiki posisi kamera atau pencahayaan.")
+                            Text("Please adjust camera position or lighting.")
                                 .font(.system(size: 14))
                                 .foregroundColor(.gray)
                             
-                            Text("Mencoba ulang dalam 1 detik...")
+                            Text("Retrying in 1 second...")
                                 .font(.system(size: 12))
                                 .foregroundColor(.white.opacity(0.5))
                                 .padding(.top, 10)

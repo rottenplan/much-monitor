@@ -20,6 +20,16 @@ else
     exit 1
 fi
 
+# 2b. Copy Resources
+if [ -f "Resources/AppIcon.icns" ]; then
+    cp "Resources/AppIcon.icns" "$APP_DIR/Contents/Resources/"
+    echo "AppIcon copied."
+fi
+if [ -f "Resources/AppLogo.png" ]; then
+    cp "Resources/AppLogo.png" "$APP_DIR/Contents/Resources/"
+    echo "AppLogo copied."
+fi
+
 # 3. Create Info.plist
 cat > "$APP_DIR/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -28,6 +38,8 @@ cat > "$APP_DIR/Contents/Info.plist" <<EOF
 <dict>
     <key>CFBundleExecutable</key>
     <string>$APP_NAME</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleIdentifier</key>
     <string>com.muchdas.$APP_NAME</string>
     <key>CFBundleName</key>
