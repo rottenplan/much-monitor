@@ -55,14 +55,14 @@ class CalibrationLogic {
         let targetLum = 0.2126 * target.r + 0.7152 * target.g + 0.0722 * target.b
         let measureLum = 0.2126 * measured.r + 0.7152 * measured.g + 0.0722 * measured.b
         
-        if targetLum > 50 && measureLum < 10 {
-            return (false, "Kamera Gelap! (Buka Lensa)")
+        if targetLum > 50 && measureLum < 5 {
+            return (false, "Kamera Gelap! (Buka Lensa / Cek Cahaya)")
         }
         
         // 2. Dominant Color Check (Loose)
         // Only run if saturation is decent (not gray/white)
         func getDominant(_ c: RGB) -> String {
-            if abs(c.r - c.g) < 20 && abs(c.g - c.b) < 20 { return "Gray" }
+            if abs(c.r - c.g) < 30 && abs(c.g - c.b) < 30 { return "Gray" }
             if c.r > c.g && c.r > c.b { return "Red" }
             if c.g > c.r && c.g > c.b { return "Green" }
             if c.b > c.r && c.b > c.g { return "Blue" }

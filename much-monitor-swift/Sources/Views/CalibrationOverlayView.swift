@@ -32,9 +32,12 @@ struct CalibrationOverlayView: View {
         (122/255, 122/255, 121/255), (85/255, 85/255, 85/255),    (52/255, 52/255, 52/255)
     ]
     
+    @State private var window: NSWindow? // Reference to the window
+    
     var body: some View {
         GeometryReader { geometry in
             ZStack {
+                // ... (Keep existing content inside ZStack)
                 // 1. Fullscreen Color Patch
                 targetColor
                     .ignoresSafeArea()
@@ -164,13 +167,15 @@ struct CalibrationOverlayView: View {
                 }
             }
         }
+        .background(WindowAccessor(window: $window)) // Bind window
+        .onChange(of: window) { newWindow in
+            if let win = newWindow {
+                toggleCalibrationMode(true, for: win)
+            }
+        }
         .onAppear {
              // NO AUTO_START!
             appState.cameraManager.startSession()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                toggleCalibrationMode(true)
-                // User must click START MANUAL
-            }
         }
         .onDisappear {
             calibrationTask?.cancel()
@@ -178,6 +183,8 @@ struct CalibrationOverlayView: View {
         }
     }
     
+    // ... startCalibration and others ...
+
     func startCalibration() {
         guard !isCalibrating else { return }
         isCalibrating = true
@@ -268,19 +275,20 @@ struct CalibrationOverlayView: View {
         dismiss()
     }
     
-    func toggleCalibrationMode(_ enable: Bool) {
+    func toggleCalibrationMode(_ enable: Bool, for specificWindow: NSWindow? = nil) {
         DispatchQueue.main.async {
-            guard let window = NSApp.windows.first(where: { $0.isKeyWindow }) else { return }
+            // Use specific window if provided, else captured, else keyWindow
+            guard let win = specificWindow ?? self.window ?? NSApp.windows.first(where: { $0.isKeyWindow }) else { return }
             
             if enable {
-                window.level = .floating
-                if !window.styleMask.contains(.fullScreen) {
-                    window.toggleFullScreen(nil)
+                win.level = .floating
+                if !win.styleMask.contains(.fullScreen) {
+                    win.toggleFullScreen(nil)
                 }
             } else {
-                window.level = .normal
-                 if window.styleMask.contains(.fullScreen) {
-                    window.toggleFullScreen(nil)
+                win.level = .normal
+                 if win.styleMask.contains(.fullScreen) {
+                    win.toggleFullScreen(nil)
                 }
             }
         }
@@ -288,6 +296,21 @@ struct CalibrationOverlayView: View {
 }
 
 // Robust Camera Preview (Unchanged)
+// Helper to access the underlying NSWindow
+struct WindowAccessor: NSViewRepresentable {
+    @Binding var window: NSWindow?
+    
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        DispatchQueue.main.async {
+            self.window = view.window
+        }
+        return view
+    }
+    
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
 struct CameraPreview: NSViewRepresentable {
     let session: AVCaptureSession
     
@@ -297,7 +320,6 @@ struct CameraPreview: NSViewRepresentable {
         
         let previewLayer = AVCaptureVideoPreviewLayer(session: session)
         previewLayer.videoGravity = .resizeAspectFill
-        // Ensure layer resizes with view
         previewLayer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
         
         view.layer = previewLayer
