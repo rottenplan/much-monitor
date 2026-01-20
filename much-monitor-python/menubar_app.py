@@ -48,7 +48,7 @@ class MuchMonitorMenuBar(Cocoa.NSObject):
         self.menu.addItem_(Cocoa.NSMenuItem.separatorItem())
         
         # System Settings Shortcut
-        settingsItem = Cocoa.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Buka Pengaturan Display...", "openSettings:", "")
+        settingsItem = Cocoa.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Open Display Settings...", "openSettings:", "")
         settingsItem.setTarget_(self)
         self.menu.addItem_(settingsItem)
 
@@ -58,7 +58,7 @@ class MuchMonitorMenuBar(Cocoa.NSObject):
         self.menu.addItem_(refreshItem)
         
         # Quit
-        quitItem = Cocoa.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Keluar", "terminate:", "")
+        quitItem = Cocoa.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_("Quit", "terminate:", "")
         self.menu.addItem_(quitItem)
 
     def switchProfile_(self, sender):

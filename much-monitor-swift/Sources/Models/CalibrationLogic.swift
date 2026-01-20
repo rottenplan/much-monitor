@@ -13,6 +13,61 @@ struct RGB {
     
     // Helper to convert to array
     var array: [Double] { [r, g, b] }
+    
+    // Linearization for sRGB (needed for XYZ conversion)
+    func linearized() -> (Double, Double, Double) {
+        func lin(_ c: Double) -> Double {
+            let v = c / 255.0
+            return v <= 0.04045 ? (v / 12.92) : pow((v + 0.055) / 1.055, 2.4)
+        }
+        return (lin(r), lin(g), lin(b))
+    }
+}
+
+struct XYZ {
+    let x: Double
+    let y: Double
+    let z: Double
+}
+
+struct Lab {
+    let l: Double
+    let a: Double
+    let b: Double
+}
+
+extension RGB {
+    func toXYZ() -> XYZ {
+        let (rl, gl, bl) = self.linearized()
+        // sRGB to XYZ (D65) matrix
+        let x = rl * 0.4124564 + gl * 0.3575761 + bl * 0.1804375
+        let y = rl * 0.2126729 + gl * 0.7151522 + bl * 0.0721750
+        let z = rl * 0.0193339 + gl * 0.1191920 + bl * 0.9503041
+        return XYZ(x: x * 100.0, y: y * 100.0, z: z * 100.0)
+    }
+}
+
+extension XYZ {
+    func toLab() -> Lab {
+        // Observer = 2°, Illuminant = D65
+        let xn = 95.047
+        let yn = 100.0
+        let zn = 108.883
+        
+        func f(_ t: Double) -> Double {
+            return t > 0.008856 ? pow(t, 1.0/3.0) : (7.787 * t) + (16.0 / 116.0)
+        }
+        
+        let fx = f(x / xn)
+        let fy = f(y / yn)
+        let fz = f(z / zn)
+        
+        let l = (116.0 * fy) - 16.0
+        let a = 500.0 * (fx - fy)
+        let b = 200.0 * (fy - fz)
+        
+        return Lab(l: l, a: a, b: b)
+    }
 }
 
 class CalibrationLogic {
@@ -275,12 +330,81 @@ class CalibrationLogic {
         return self.ccm
     }
     
+    func calculateDeltaE2000(_ c1: Lab, _ c2: Lab) -> Double {
+        let kl = 1.0, kc = 1.0, kh = 1.0
+        
+        let l1 = c1.l, a1 = c1.a, b1 = c1.b
+        let l2 = c2.l, a2 = c2.a, b2 = c2.b
+        
+        let avgL = (l1 + l2) / 2.0
+        let c1_val = sqrt(a1*a1 + b1*b1)
+        let c2_val = sqrt(a2*a2 + b2*b2)
+        let avgC = (c1_val + c2_val) / 2.0
+        
+        let g = 0.5 * (1.0 - sqrt(pow(avgC, 7.0) / (pow(avgC, 7.0) + pow(25.0, 7.0))))
+        let a1p = (1.0 + g) * a1
+        let a2p = (1.0 + g) * a2
+        
+        let c1p = sqrt(a1p*a1p + b1*b1)
+        let c2p = sqrt(a2p*a2p + b2*b2)
+        let avgCp = (c1p + c2p) / 2.0
+        
+        func getHue(_ ap: Double, _ bp: Double) -> Double {
+            if ap == 0 && bp == 0 { return 0 }
+            let h = atan2(bp, ap) * (180.0 / .pi)
+            return h >= 0 ? h : h + 360.0
+        }
+        
+        let h1p = getHue(a1p, b1)
+        let h2p = getHue(a2p, b2)
+        
+        var dHp: Double
+        if abs(h1p - h2p) <= 180 {
+            dHp = h2p - h1p
+        } else if h2p <= h1p {
+            dHp = h2p - h1p + 360.0
+        } else {
+            dHp = h2p - h1p - 360.0
+        }
+        
+        let dLp = l2 - l1
+        let dCp = c2p - c1p
+        let dHp_val = 2.0 * sqrt(c1p * c2p) * sin((dHp / 2.0) * (.pi / 180.0))
+        
+        let avgHp: Double
+        if abs(h1p - h2p) <= 180 {
+            avgHp = (h1p + h2p) / 2.0
+        } else if (h1p + h2p) < 360 {
+            avgHp = (h1p + h2p + 360.0) / 2.0
+        } else {
+            avgHp = (h1p + h2p - 360.0) / 2.0
+        }
+        
+        let t = 1.0 - 0.17 * cos((avgHp - 30.0) * (.pi / 180.0)) +
+                0.24 * cos((2.0 * avgHp) * (.pi / 180.0)) +
+                0.32 * cos((3.0 * avgHp + 6.0) * (.pi / 180.0)) -
+                0.20 * cos((4.0 * avgHp - 63.0) * (.pi / 180.0))
+        
+        let sl = 1.0 + (0.015 * pow(avgL - 50.0, 2.0)) / sqrt(20.0 + pow(avgL - 50.0, 2.0))
+        let sc = 1.0 + 0.045 * avgCp
+        let sh = 1.0 + 0.015 * avgCp * t
+        
+        let dTheta = 30.0 * exp(-pow((avgHp - 275.0) / 25.0, 2.0))
+        let rc = 2.0 * sqrt(pow(avgCp, 7.0) / (pow(avgCp, 7.0) + pow(25.0, 7.0)))
+        let rt = -rc * sin(2.0 * dTheta * (.pi / 180.0))
+        
+        let de00 = sqrt(pow(dLp / (kl * sl), 2.0) +
+                        pow(dCp / (kc * sc), 2.0) +
+                        pow(dHp_val / (kh * sh), 2.0) +
+                        rt * (dCp / (kc * sc)) * (dHp_val / (kh * sh)))
+        
+        return de00
+    }
+    
     func calculateDeltaE(_ c1: RGB, _ c2: RGB) -> Double {
-        // Simple Euclidean Distance in RGB (as proxy for real DeltaE in this version)
-        let r = c1.r - c2.r
-        let g = c1.g - c2.g
-        let b = c1.b - c2.b
-        return sqrt(r*r + g*g + b*b)
+        let lab1 = c1.toXYZ().toLab()
+        let lab2 = c2.toXYZ().toLab()
+        return calculateDeltaE2000(lab1, lab2)
     }
     
     // MARK: - Analysis
@@ -308,52 +432,46 @@ class CalibrationLogic {
         _ = computeCCM()
         
         // 2. Calculate Metrics
-        var totalRawDE = 0.0
         var totalCorrectedDE = 0.0
+        var maxDE = 0.0
         
         for s in samples {
-            // Raw Error
-            totalRawDE += calculateDeltaE(s.target, s.measured)
-            
             // Corrected Error
             var corrected = s.measured
             if let mat = ccm {
-                // Apply Matrix: 1x3 * 3x3
                 let r = s.measured.r * mat[0][0] + s.measured.g * mat[1][0] + s.measured.b * mat[2][0]
                 let g = s.measured.r * mat[0][1] + s.measured.g * mat[1][1] + s.measured.b * mat[2][1]
                 let b = s.measured.r * mat[0][2] + s.measured.g * mat[1][2] + s.measured.b * mat[2][2]
-                // Clip
                 corrected = RGB(r: min(255, max(0, r)), g: min(255, max(0, g)), b: min(255, max(0, b)))
             }
-            totalCorrectedDE += calculateDeltaE(s.target, corrected)
+            let de = calculateDeltaE(s.target, corrected)
+            totalCorrectedDE += de
+            if de > maxDE { maxDE = de }
         }
         
-        let avgRaw = totalRawDE / Double(samples.count)
         let avgCorr = totalCorrectedDE / Double(samples.count)
-        let improvement = avgRaw > 0 ? ((avgRaw - avgCorr) / avgRaw) * 100.0 : 0.0
         
-        // Grading
+        // Grading based on Professional Standards (Spyder/Calibrite)
         let grade: String
         let desc: String
         
-        if avgCorr < 2.0 {
-            grade = "GRADE A (Professional)"
-            desc = "Excellent accuracy suitable for professional color grading."
-        } else if avgCorr < 5.0 {
-            grade = "GRADE B (Good)"
-            desc = "Good accuracy for general content creation and photography."
-        } else if avgCorr < 10.0 {
-            grade = "GRADE C (Fair)"
-            desc = "Acceptable for daily use. Verify lighting conditions."
+        if avgCorr < 1.0 {
+            grade = "PROFESSIONAL (Excellent)"
+            desc = "Color accuracy is excellent (dE < 1.0). Imperceptible differences."
+        } else if avgCorr < 2.0 {
+            grade = "STUDIO (Good)"
+            desc = "Good accuracy suitable for professional design work (dE < 2.0)."
+        } else if avgCorr < 4.0 {
+            grade = "CREATIVE (Fair)"
+            desc = "Acceptable for general creative use and media consumption."
         } else {
             grade = "RECALIBRATE"
-            desc = "Poor accuracy detected. Please ensure room is dark and camera is locked."
+            desc = "Accuracy is below target. Check camera placement and lighting."
         }
         
         return [
-            "avg_raw": avgRaw,
             "avg_corrected": avgCorr,
-            "improvement": improvement,
+            "max_de": maxDE,
             "grade": grade,
             "description": desc,
             "color_space": targetColorSpace,

@@ -107,16 +107,17 @@ struct ResultsView: View {
                     
                     // Score Row
                     HStack(spacing: 15) {
-                        let rawDE = metrics?["avg_raw"] as? Double ?? 4.2
-                        let correctedDE = metrics?["avg_corrected"] as? Double ?? 0.8
+                        let avgDE = metrics?["avg_corrected"] as? Double ?? 0.0
+                        let maxDE = metrics?["max_de"] as? Double ?? 0.0
+                        let gamma = metrics?["detected_gamma"] as? Double ?? 2.2
                         
-                        ScoreCard(title: "RAW DELTA-E", value: String(format: "%.1f", rawDE), color: .gray)
-                        Text("→")
-                            .font(.system(size: 24))
-                            .foregroundColor(Color(white: 0.2))
+                        let avgColor = avgDE < 1.0 ? Color.green : (avgDE < 2.0 ? Color.blue : Color.orange)
+                        ScoreCard(title: "AVERAGE dE00", value: String(format: "%.2f", avgDE), color: avgColor)
                         
-                        let correctedColor = correctedDE < 2.0 ? Color.green : Color.blue
-                        ScoreCard(title: "PRO-CAL DELTA-E", value: String(format: "%.1f", correctedDE), color: correctedColor)
+                        let maxColor = maxDE < 3.0 ? Color.blue : Color.orange
+                        ScoreCard(title: "MAXIMUM dE00", value: String(format: "%.2f", maxDE), color: maxColor)
+                        
+                        ScoreCard(title: "DETECTED GAMMA", value: String(format: "%.2f", gamma), color: .white)
                     }
                     
                     // Description
