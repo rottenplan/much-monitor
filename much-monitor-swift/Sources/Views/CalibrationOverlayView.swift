@@ -28,6 +28,7 @@ struct CalibrationOverlayView: View {
     @State private var showCheckmark = false
     
     @State private var calibrationTask: Task<Void, Never>? = nil
+    @State private var isStarting = false // Debounce flag
     
     // VALIDATION: Debounce for window lifecycle
     @State private var sessionStopTask: Task<Void, Never>? = nil
@@ -215,7 +216,8 @@ struct CalibrationOverlayView: View {
                                 .cornerRadius(8)
                             }
                             .buttonStyle(.plain)
-                            .disabled(!appState.cameraManager.isReceivingFrames && phase == .idle)
+                            .buttonStyle(.plain)
+                            .disabled((!appState.cameraManager.isReceivingFrames && phase == .idle) || isStarting)
                             .frame(width: 320) // Match preview width
                             
                             // 5. Back Button
@@ -278,6 +280,13 @@ struct CalibrationOverlayView: View {
     func startCalibration() {
         guard phase == .idle else { return }
         phase = .preparing
+        isStarting = true
+        
+        // Disable button for 2 seconds to prevent accidental stop (double click)
+        Task {
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            await MainActor.run { isStarting = false }
+        }
         
         calibrationTask = Task {
             let logic = CalibrationLogic()
@@ -533,7 +542,7 @@ struct CalibrationOverlayView: View {
         // JUST CLOSE OVERLAY (User Request)
         // openWindow(id: "main") // Removed to prevent duplicates/crashes
         
-        toggleCalibrationMode(false)
+        // toggleCalibrationMode(false) // REMOVED: Causing crash on dismiss (Red Screen Force Close)
         dismiss()
     }
     

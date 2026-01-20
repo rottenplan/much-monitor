@@ -4,7 +4,8 @@ APP_NAME="MuchMonitorPro"
 APP_DIR="$HOME/Documents/$APP_NAME.app"
 EXECUTABLE_PATH=".build/release/$APP_NAME"
 
-echo "Packaging $APP_NAME..."
+echo "Building Release..."
+swift build -c release
 
 # 1. Create Directory Structure
 mkdir -p "$APP_DIR/Contents/MacOS"
@@ -16,7 +17,7 @@ if [ -f "$EXECUTABLE_PATH" ]; then
     chmod +x "$APP_DIR/Contents/MacOS/$APP_NAME"
     echo "Executable copied."
 else
-    echo "Error: Executable not found at $EXECUTABLE_PATH. Did the build succeed?"
+    echo "Error: Executable not found at $EXECUTABLE_PATH. Build failed?"
     exit 1
 fi
 
@@ -53,9 +54,9 @@ cat > "$APP_DIR/Contents/Info.plist" <<EOF
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSCameraUsageDescription</key>
-    <string>Aplikasi ini membutuhkan akses kamera untuk melakukan kalibrasi monitor.</string>
+    <string>This application needs camera access to perform monitor calibration.</string>
     <key>NSMicrophoneUsageDescription</key>
-    <string>Aplikasi ini membutuhkan akses mikrofon (jika diperlukan oleh sistem kamera).</string>
+    <string>This application needs microphone access (if required by camera system).</string>
 </dict>
 </plist>
 EOF
@@ -63,7 +64,8 @@ EOF
 echo "Info.plist created."
 
 # 4. Clean up attributes (optional but good practice)
-xattr -cr "$APP_DIR"
+# 4. Clean up attributes
+find "$APP_DIR" -exec xattr -c {} +
 
 echo "Success! App saved to: $APP_DIR"
 open -R "$APP_DIR"
