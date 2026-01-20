@@ -11,9 +11,13 @@ class AppState: ObservableObject {
     @Published var gamma: String = "2.2 (SDR)"
     @Published var useMock: Bool = false {
         didSet {
-            // Update CameraManager mock state if needed, 
-            // though CameraManager might handle it internally if we bound it differently.
-            // For now, views verify this flag.
+            cameraManager.isMockMode = useMock
+            // If we toggle while running, we might want to restart session, but usually this is done before start.
+            // If session is running, switch?
+            if cameraManager.session.isRunning || cameraManager.isReceivingFrames {
+                cameraManager.stopSession()
+                cameraManager.startSession()
+            }
         }
     }
     

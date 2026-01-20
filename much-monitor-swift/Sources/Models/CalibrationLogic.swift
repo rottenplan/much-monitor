@@ -25,6 +25,9 @@ class CalibrationLogic {
     private var whiteLevel: RGB = RGB(r: 255, g: 255, b: 255)
     private var hasBaseline: Bool = false
     
+    // Gamma Data
+    private var graySamples: [(input: Double, output: Double)] = [] // Input 0-1, Output 0-1 (Luminance)
+    
     func setBaseline(black: RGB, white: RGB) {
         self.blackLevel = black
         self.whiteLevel = white
@@ -37,6 +40,20 @@ class CalibrationLogic {
         // Apply pre-compensation based on sensor model
         let compensated = compensateSample(measured: measured, model: sensorModel)
         samples.append(ColorSample(target: target, measured: compensated))
+    }
+    
+    func recordGraySample(targetLevel: Double, measured: RGB, sensorModel: String) {
+        let compensated = compensateSample(measured: measured, model: sensorModel)
+        
+        // Convert to Luminance (Y)
+        let y = 0.2126 * compensated.r + 0.7152 * compensated.g + 0.0722 * compensated.b
+        
+        // Normalize Y based on Black/White
+        let blackY = 0.2126 * blackLevel.r + 0.7152 * blackLevel.g + 0.0722 * blackLevel.b
+        let whiteY = 0.2126 * whiteLevel.r + 0.7152 * whiteLevel.g + 0.0722 * whiteLevel.b
+        
+        let normalizedY = (y - blackY) / (whiteY - blackY)
+        graySamples.append((input: targetLevel, output: max(0.001, normalizedY)))
     }
     
     private func compensateSample(measured: RGB, model: String) -> RGB {
@@ -75,20 +92,35 @@ class CalibrationLogic {
     
     // MARK: - Validation
     
-    func validateSample(target: RGB, measured: RGB) -> (isValid: Bool, message: String?) {
-        // 1. Luminance Check
+    func validateSample(target: RGB, measured: RGB, sensorModel: String = "Generic") -> (isValid: Bool, message: String?) {
+        // 0. Apply Compensation FIRST to normalize expectations
+        let corrected = compensateSample(measured: measured, model: sensorModel)
+        
+        // 1. Luminance Check using Corrected Values
         // If Target is bright (>50), Measured must NOT be black (<10).
         let targetLum = 0.2126 * target.r + 0.7152 * target.g + 0.0722 * target.b
-        let measureLum = 0.2126 * measured.r + 0.7152 * measured.g + 0.0722 * measured.b
+        let measureLum = 0.2126 * corrected.r + 0.7152 * corrected.g + 0.0722 * corrected.b
         
-        if targetLum > 50 && measureLum < 1.0 {
-            return (false, "Kamera Gelap! (Buka Lensa / Cek Cahaya)")
+        if targetLum > 50 && measureLum < 5.0 {
+            return (false, "Camera is Dark! (Check Lens / Light)")
         }
         
         // 2. Dominant Color Check (Loose)
         // Only run if saturation is decent (not gray/white)
         func getDominant(_ c: RGB) -> String {
-            if abs(c.r - c.g) < 30 && abs(c.g - c.b) < 30 { return "Gray" }
+            let maxVal = max(c.r, max(c.g, c.b))
+            let minVal = min(c.r, min(c.g, c.b))
+            
+            if (maxVal - minVal) < 20 { return "Gray" }
+            
+            // Check for Secondary Colors (if two channels are high and close)
+            // Magenta: High R, High B, Low G
+            if c.r > 100 && c.b > 100 && c.g < (maxVal * 0.7) && abs(c.r - c.b) < 40 { return "Magenta" }
+            // Yellow: High R, High G, Low B
+            if c.r > 100 && c.g > 100 && c.b < (maxVal * 0.7) && abs(c.r - c.g) < 40 { return "Yellow" }
+            // Cyan: High G, High B, Low R
+            if c.g > 100 && c.b > 100 && c.r < (maxVal * 0.7) && abs(c.g - c.b) < 40 { return "Cyan" }
+            
             if c.r > c.g && c.r > c.b { return "Red" }
             if c.g > c.r && c.g > c.b { return "Green" }
             if c.b > c.r && c.b > c.g { return "Blue" }
@@ -96,19 +128,34 @@ class CalibrationLogic {
         }
         
         let targetDom = getDominant(target)
-        let measureDom = getDominant(measured)
+        let measureDom = getDominant(corrected)
         
-        // If Target is strongly Red, and Measured is Blue/Green -> Fail
+        // Relaxed Validation Logic
         if targetDom != "Gray" && targetDom != "Mixed" {
-            // Allow some crossover (e.g. Red vs Mixed), but Red vs Blue is suspicious.
-            if targetDom == "Red" && (measureDom == "Blue" || measureDom == "Green") {
-                return (false, "Salah Warna! (Target: Merah)")
+            // General Mismatch Logic
+            var acceptable = [targetDom]
+            
+            // Allow Adjacent Colors
+            switch targetDom {
+            case "Red": acceptable.append(contentsOf: ["Magenta", "Yellow"])
+            case "Green": acceptable.append(contentsOf: ["Yellow", "Cyan"])
+            case "Blue": acceptable.append(contentsOf: ["Cyan", "Magenta"])
+            case "Magenta": acceptable.append(contentsOf: ["Red", "Blue"])
+            case "Yellow": acceptable.append(contentsOf: ["Red", "Green"])
+            case "Cyan": acceptable.append(contentsOf: ["Green", "Blue"])
+            default: break
             }
-            if targetDom == "Green" && (measureDom == "Red" || measureDom == "Blue") {
-                return (false, "Salah Warna! (Target: Hijau)")
-            }
-            if targetDom == "Blue" && (measureDom == "Red" || measureDom == "Green") {
-                return (false, "Salah Warna! (Target: Biru)")
+            
+            if !acceptable.contains(measureDom) && measureDom != "Mixed" {
+                 // Hard Fail only if completely opposite (e.g. Red Target but got Cyan/Green/Blue)
+                 // Keeping it simple: If Target is Red, and we got Blue/Cyan/Green -> Fail
+                 // But wait, Magenta is allowed.
+                 // Let's rely on the Acceptable list.
+                 // If measured is NOT in acceptable AND NOT "Mixed" -> Fail.
+                 // Also ensure it's not Gray (Gray is allowed if saturation is low, but handled above)
+                 if measureDom != "Gray" {
+                     return (false, "Wrong Color! (Target: \(targetDom), Detect: \(measureDom))")
+                 }
             }
         }
         
@@ -117,8 +164,60 @@ class CalibrationLogic {
     
     func reset() {
         samples.removeAll()
+        graySamples.removeAll()
         ccm = nil
         hasBaseline = false
+    }
+    
+    // NEW: Validation for Screen Presence
+    func validateBaseline() -> (isValid: Bool, message: String?) {
+        guard hasBaseline else { return (false, "Baseline not set") }
+        
+        let b = blackLevel
+        let w = whiteLevel
+        
+        // Luminance Y
+        let yBlack = 0.2126 * b.r + 0.7152 * b.g + 0.0722 * b.b
+        let yWhite = 0.2126 * w.r + 0.7152 * w.g + 0.0722 * w.b
+        
+        // Check 1: Contrast Range
+        // If camera is on desk/static, delta will be small (noise)
+        let delta = yWhite - yBlack
+        if delta < 15.0 {
+            return (false, "Camera does not see screen changes! Ensure camera is placed on the guide line.")
+        }
+        
+        // Check 2: Signal Strength
+        // If white is too dark, camera might be covered or off-angle
+        if yWhite < 20.0 {
+             return (false, "Camera is too dark! Increase monitor brightness or check camera position.")
+        }
+        
+        return (true, nil)
+    }
+    
+    func calculateGamma() -> Double {
+        guard !graySamples.isEmpty else { return 2.2 } // Default
+        
+        // Simple log-log estimation or average log calculation
+        // Gamma = log(Output) / log(Input)
+        // We take average of calculated gammas for 25, 50, 75
+        
+        var totalGamma = 0.0
+        var count = 0
+        
+        for s in graySamples {
+            if s.input > 0 && s.output > 0 {
+                let g = log(s.output) / log(s.input)
+                // Filter wild values
+                if g > 0.5 && g < 4.0 {
+                    totalGamma += g
+                    count += 1
+                }
+            }
+        }
+        
+        return count > 0 ? totalGamma / Double(count) : 2.2
     }
     
     // MARK: - Core Math
@@ -199,7 +298,7 @@ class CalibrationLogic {
                 "avg_raw": 0.0,
                 "avg_corrected": 0.0,
                 "improvement": 0.0,
-                "description": "ERROR: Kamera menangkap gambar gelap gulita (Black). Pastikan lensa tidak tertutup atau perizinan kamera aktif.",
+                "description": "ERROR: Camera captured pitch black image. Ensure lens is not covered and permissions are active.",
                 "color_space": targetColorSpace,
                 "csv_log": getLogCSV()
             ]
@@ -258,6 +357,7 @@ class CalibrationLogic {
             "grade": grade,
             "description": desc,
             "color_space": targetColorSpace,
+            "detected_gamma": calculateGamma(),
             "csv_log": getLogCSV()
         ]
     }
