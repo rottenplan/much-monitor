@@ -217,7 +217,9 @@ struct ResultsView: View {
                 .padding(.bottom, 35)
             }
         }
-        .frame(minWidth: 400, minHeight: 600) // Flexible Frame
+
+        .frame(width: 500, height: 750) // Fixed Frame
+        .fixedSize()
         .background(Color(red: 0.03, green: 0.03, blue: 0.03))
         .preferredColorScheme(.dark)
         .alert(isPresented: $showSuccessAlert) {

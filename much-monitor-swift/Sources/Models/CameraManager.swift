@@ -21,32 +21,59 @@ class CameraManager: NSObject, ObservableObject {
     
     override init() {
         super.init()
+        checkPermission { granted in
+            print("CameraManager: Init permission check: \(granted)")
+        }
         refreshCameras()
     }
     
     func refreshCameras() {
-        var deviceTypes: [AVCaptureDevice.DeviceType] = [.builtInWideAngleCamera, .externalUnknown]
+        print("CameraManager: Refreshing cameras...")
+        var deviceTypes: [AVCaptureDevice.DeviceType] = [
+            .builtInWideAngleCamera,
+            .externalUnknown
+        ]
         if #available(macOS 14.0, *) {
             deviceTypes.append(.continuityCamera)
         }
+        // Valid macOS device types
+        if #available(macOS 13.0, *) {
+             deviceTypes.append(.deskViewCamera)
+        }
         
+        // Use a broader discovery session
         let discoverySession = AVCaptureDevice.DiscoverySession(
             deviceTypes: deviceTypes,
             mediaType: .video,
             position: .unspecified
         )
         
+        let os = ProcessInfo.processInfo.operatingSystemVersion
+        print("CameraManager: OS Version: \(os.majorVersion).\(os.minorVersion).\(os.patchVersion)")
+        
         let devices = discoverySession.devices
+        print("CameraManager: Found \(devices.count) total devices.")
+        for d in devices {
+            print("  - \(d.localizedName) (ID: \(d.uniqueID))")
+        }
         
         // Filter out virtual cameras (similar to Python logic)
-        let filtered = devices.filter { device in
+        var finalDevices = devices.filter { device in
             let name = device.localizedName.lowercased()
             let virtualKeywords = ["desk view", "virtual", "software", "obs", "snap"]
             return !virtualKeywords.contains { name.contains($0) }
         }
         
+        print("CameraManager: After filtering virtual cams: \(finalDevices.count) devices.")
+        
+        // FALLBACK: If real cameras are missing but we have *something* (like OBS), use it.
+        if finalDevices.isEmpty && !devices.isEmpty {
+            print("CameraManager: No real cameras found. Falling back to all available devices (e.g. Virtual/OBS).")
+            finalDevices = devices
+        }
+        
         // Prioritize iPhone/Continuity
-        self.availableCameras = filtered.sorted { d1, d2 in
+        self.availableCameras = finalDevices.sorted { d1, d2 in
             let n1 = d1.localizedName.lowercased()
             let n2 = d2.localizedName.lowercased()
             
@@ -61,59 +88,97 @@ class CameraManager: NSObject, ObservableObject {
         
         if self.selectedDevice == nil {
             self.selectedDevice = availableCameras.first
+            if let first = availableCameras.first {
+                print("CameraManager: Auto-selected device: \(first.localizedName)")
+            } else {
+                print("CameraManager: No suitable camera found to auto-select.")
+            }
+        }
+    }
+    
+    func checkPermission(completion: @escaping (Bool) -> Void) {
+        let status = AVCaptureDevice.authorizationStatus(for: .video)
+        switch status {
+        case .authorized:
+            print("CameraManager: Access authorized.")
+            completion(true)
+        case .notDetermined:
+            print("CameraManager: Access not determined. Requesting...")
+            AVCaptureDevice.requestAccess(for: .video) { granted in
+                print("CameraManager: Access request result: \(granted)")
+                completion(granted)
+            }
+        case .denied, .restricted:
+            print("CameraManager: Access denied or restricted.")
+            completion(false)
+        @unknown default:
+            print("CameraManager: Unknown auth status.")
+            completion(false)
         }
     }
     
     func startSession() {
-        guard let device = selectedDevice else { 
-            print("CameraManager: No device selected to start session.")
-            return 
-        }
-        
-        print("CameraManager: Attempting to start session with device: \(device.localizedName)")
-        
-        // Start Health Check on Main Thread
-        DispatchQueue.main.async {
-            self.startHealthCheck()
-        }
-        
-        sessionQueue.async {
-            self.session.beginConfiguration()
+        print("CameraManager: startSession() called")
+        checkPermission { granted in
+            print("CameraManager: checkPermission result: \(granted)")
+            guard granted else {
+                print("CameraManager: Cannot start session. Permission denied.")
+                return
+            }
             
-            // Remove existing inputs
-            self.session.inputs.forEach { self.session.removeInput($0) }
+            guard let device = self.selectedDevice else { 
+                print("CameraManager: No device selected to start session.")
+                return 
+            }
             
-            do {
-                let input = try AVCaptureDeviceInput(device: device)
-                if self.session.canAddInput(input) {
-                    self.session.addInput(input)
-                    print("CameraManager: Input added.")
-                } else {
-                    print("CameraManager: Could not add input.")
-                }
+            print("CameraManager: Attempting to start session with device: \(device.localizedName)")
+            
+            // Start Health Check on Main Thread
+            DispatchQueue.main.async {
+                self.startHealthCheck()
+            }
+            
+            self.sessionQueue.async {
+                self.session.beginConfiguration()
                 
-                if self.session.canAddOutput(self.videoOutput) {
-                    self.session.addOutput(self.videoOutput)
-                    self.videoOutput.setSampleBufferDelegate(self, queue: DispatchQueue(label: "videoQueue"))
-                    print("CameraManager: Output added.")
-                }
+                // Remove existing inputs AND outputs for clean start
+                self.session.inputs.forEach { self.session.removeInput($0) }
+                self.session.outputs.forEach { self.session.removeOutput($0) }
                 
-                self.session.commitConfiguration()
-                self.session.startRunning()
-                print("CameraManager: Session startRunning() called. Running: \(self.session.isRunning)")
-            } catch {
-                print("CameraManager: Error setting up camera: \(error)")
+                do {
+                    let input = try AVCaptureDeviceInput(device: device)
+                    if self.session.canAddInput(input) {
+                        self.session.addInput(input)
+                        print("CameraManager: Input added.")
+                    } else {
+                        print("CameraManager: Could not add input.")
+                    }
+                    
+                    if self.session.canAddOutput(self.videoOutput) {
+                        self.session.addOutput(self.videoOutput)
+                        self.videoOutput.setSampleBufferDelegate(self, queue: DispatchQueue(label: "videoQueue"))
+                        print("CameraManager: Output added.")
+                    }
+                    
+                    self.session.commitConfiguration()
+                    self.session.startRunning()
+                    print("CameraManager: Session startRunning() called. Running: \(self.session.isRunning)")
+                } catch {
+                    print("CameraManager: Error setting up camera: \(error)")
+                }
             }
         }
     }
     
     func stopSession() {
+        print("CameraManager: Stopping session.")
         DispatchQueue.main.async {
             self.stopHealthCheck()
             self.isReceivingFrames = false
         }
         sessionQueue.async {
             self.session.stopRunning()
+            print("CameraManager: Session stopped.")
         }
     }
     
@@ -226,7 +291,19 @@ class CameraManager: NSObject, ObservableObject {
 
 extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
     func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        // Debug frame delivery (throttle log)
+        let timestamp = CMTimeGetSeconds(CMSampleBufferGetPresentationTimeStamp(sampleBuffer))
+        if Int(timestamp) % 5 == 0 {
+             // Print once per 5 seconds of connection time roughly, or use a counter
+             // simpler: random output or just checking if it works at all first
+        }
+        
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        
+        // Debug print for first frame only to confirm flow
+        if !self.isReceivingFrames {
+            print("CameraManager: Received first frame! Timestamp: \(timestamp)")
+        }
         // Create CIImage from buffer
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
         // Use persistent context

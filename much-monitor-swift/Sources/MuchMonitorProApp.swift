@@ -28,6 +28,8 @@ struct MuchMonitorProApp: App {
             ResultsView()
                 .environmentObject(appState)
         }
-        .windowResizability(.contentMinSize) // Allow resizing
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentSize) // Lock to content
+        .defaultSize(width: 500, height: 750)
     }
 }

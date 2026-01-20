@@ -6,19 +6,26 @@ struct CalibrationOverlayView: View {
     @Environment(\.openWindow) var openWindow
     @Environment(\.dismiss) var dismiss
     
-    // State
-    @State private var targetColor: Color = .black
-    @State private var isCalibrating = false
-    @State private var showCheckmark = false
-    @State private var calibrationTask: Task<Void, Never>? = nil
+    // State for Calibration Workflow
+    enum CalibrationPhase {
+        case idle
+        case measuringBlack
+        case measuringWhite
+        case calibrating
+        case completed
+    }
     
-    // Progress State
+    @State private var phase: CalibrationPhase = .idle
     @State private var currentStep = 0
-    @State private var totalSteps = 24 // Macbeth Color Checker has 24 patches
+    @State private var totalSteps = 24
     
-    // Validation State
+    // Ui & Validation
+    @State private var targetColor: Color = .black
     @State private var validationMessage: String? = nil
     @State private var isPaused = false
+    @State private var showCheckmark = false
+    
+    @State private var calibrationTask: Task<Void, Never>? = nil
     
     // Macbeth Colors (24)
     private let macbethRGBs: [(Double, Double, Double)] = [
@@ -39,8 +46,15 @@ struct CalibrationOverlayView: View {
             ZStack {
                 // ... (Keep existing content inside ZStack)
                 // 1. Fullscreen Color Patch
-                targetColor
-                    .ignoresSafeArea()
+                if phase == .measuringBlack {
+                    Color.black.ignoresSafeArea()
+                } else if phase == .measuringWhite {
+                    Color.white.ignoresSafeArea()
+                } else if phase == .calibrating {
+                    targetColor.ignoresSafeArea()
+                } else {
+                    Color.black.ignoresSafeArea()
+                }
                 
                 // 2. Alignment Guide (Phone Outline Only, No Circle)
                 VStack(spacing: 20) {
@@ -94,7 +108,19 @@ struct CalibrationOverlayView: View {
                             
                             // Info / Step Counter
                             VStack(alignment: .trailing, spacing: 6) {
-                                Text(isCalibrating ? "CALIBRATION PROCESS" : "READY TO CONNECT")
+                            // Info / Step Counter
+                            VStack(alignment: .trailing, spacing: 6) {
+                                let statusText: String = {
+                                    switch phase {
+                                    case .idle: return "READY TO CONNECT"
+                                    case .measuringBlack: return "MEASURING BLACK LEVEL"
+                                    case .measuringWhite: return "MEASURING WHITE PEAK"
+                                    case .calibrating: return "CALIB. PROCESS"
+                                    case .completed: return "COMPLETE"
+                                    }
+                                }()
+                                
+                                Text(statusText)
                                     .font(.system(size: 10, weight: .bold))
                                     .foregroundColor(.gray)
                                 
@@ -107,7 +133,7 @@ struct CalibrationOverlayView: View {
                                         .foregroundColor(.yellow)
                                         .font(.system(size: 12, weight: .bold))
                                 } else {
-                                    Text(isCalibrating ? "Reading colors..." : "Waiting for Start...")
+                                    Text(phase != .idle ? "Reading..." : "Waiting for Start...")
                                         .foregroundColor(.white.opacity(0.7))
                                         .font(.system(size: 12))
                                 }
@@ -117,9 +143,8 @@ struct CalibrationOverlayView: View {
                             .background(Color.black.opacity(0.6))
                             .cornerRadius(10)
                             
-                            // 4. Start/Stop Button (Moved into Sidebar)
                             Button(action: {
-                                if isCalibrating {
+                                if phase != .idle {
                                     stopCalibration()
                                 } else {
                                     startCalibration()
@@ -130,8 +155,8 @@ struct CalibrationOverlayView: View {
                                         Image(systemName: "video.slash.fill")
                                         Text("WAITING FOR CAMERA...")
                                     } else {
-                                        Image(systemName: isCalibrating ? "stop.circle.fill" : "play.circle.fill")
-                                        Text(isCalibrating ? "STOP" : "START MANUAL")
+                                        Image(systemName: phase != .idle ? "stop.circle.fill" : "play.circle.fill")
+                                        Text(phase != .idle ? "STOP" : "START (AUTO)")
                                     }
                                 }
                                 .font(.system(size: 14, weight: .bold))
@@ -142,7 +167,7 @@ struct CalibrationOverlayView: View {
                                 .cornerRadius(8)
                             }
                             .buttonStyle(.plain)
-                            .disabled(!appState.cameraManager.isReceivingFrames && !isCalibrating)
+                            .disabled(!appState.cameraManager.isReceivingFrames && phase == .idle)
                             .frame(width: 320) // Match preview width
                             
                             // 5. Back Button
@@ -208,8 +233,9 @@ struct CalibrationOverlayView: View {
             }
         }
         .onAppear {
+             print("CalibrationOverlayView: onAppear triggered")
              // NO AUTO_START!
-            appState.cameraManager.startSession()
+             appState.cameraManager.startSession()
         }
         .onDisappear {
             calibrationTask?.cancel()
@@ -217,17 +243,58 @@ struct CalibrationOverlayView: View {
         }
     }
     
+    }
+    
     // ... startCalibration and others ...
 
     func startCalibration() {
-        guard !isCalibrating else { return }
-        isCalibrating = true
-        currentStep = 0
-        totalSteps = macbethRGBs.count
+        guard phase == .idle else { return }
+        phase = .measuringBlack
         
         calibrationTask = Task {
             let logic = CalibrationLogic()
             logic.targetColorSpace = appState.colorSpace
+            
+            // --- STEP 1: MEASURE BLACK BASELINE ---
+            await MainActor.run { phase = .measuringBlack }
+            try? await Task.sleep(nanoseconds: 1_500_000_000) // Wait for screen to settle
+            
+            var blackRef: RGB?
+            if let frame = appState.cameraManager.getAverageRGB() {
+                blackRef = RGB(r: frame.r, g: frame.g, b: frame.b)
+                // Temporarily show checkmark
+                await MainActor.run { self.showCheckmark = true }
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                await MainActor.run { self.showCheckmark = false }
+            } else {
+               // Fallback or Retry? For now, proceed with zero implies standard.
+               // Ideally retry, but let's keep flow smooth. 0,0,0 is safe fallback.
+            }
+            
+            // --- STEP 2: MEASURE WHITE BASELINE ---
+            await MainActor.run { phase = .measuringWhite }
+            try? await Task.sleep(nanoseconds: 1_500_000_000) 
+            
+            var whiteRef: RGB?
+            if let frame = appState.cameraManager.getAverageRGB() {
+                whiteRef = RGB(r: frame.r, g: frame.g, b: frame.b)
+                 // Temporarily show checkmark
+                await MainActor.run { self.showCheckmark = true }
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                await MainActor.run { self.showCheckmark = false }
+            }
+            
+            // Set Baseline
+            if let b = blackRef, let w = whiteRef {
+                logic.setBaseline(black: b, white: w)
+            }
+            
+            // --- STEP 3: COLOR PATCHES ---
+            await MainActor.run { 
+                phase = .calibrating 
+                currentStep = 0
+                totalSteps = macbethRGBs.count
+            }
             
             // Loop through patches
             for (index, colorTuple) in macbethRGBs.enumerated() {
@@ -292,7 +359,7 @@ struct CalibrationOverlayView: View {
                 let report = logic.analyze()
                 await MainActor.run {
                     appState.latestMetrics = report
-                    isCalibrating = false
+                    phase = .completed
                     toggleCalibrationMode(false)
                     openWindow(id: "results")
                     dismiss() // Close calibration window
@@ -302,7 +369,7 @@ struct CalibrationOverlayView: View {
     }
     
     func stopCalibration() {
-        isCalibrating = false
+        phase = .idle
         calibrationTask?.cancel()
         calibrationTask = nil
         toggleCalibrationMode(false)
@@ -310,10 +377,10 @@ struct CalibrationOverlayView: View {
     }
     
     func getButtonColor() -> Color {
-        if !appState.cameraManager.isReceivingFrames && !isCalibrating {
+        if !appState.cameraManager.isReceivingFrames && phase == .idle {
             return Color.gray.opacity(0.5)
         }
-        return isCalibrating ? Color.red.opacity(0.8) : Color.blue.opacity(0.8)
+        return phase != .idle ? Color.red.opacity(0.8) : Color.blue.opacity(0.8)
     }
     
     func toggleCalibrationMode(_ enable: Bool, for specificWindow: NSWindow? = nil) {
@@ -355,27 +422,51 @@ struct WindowAccessor: NSViewRepresentable {
 struct CameraPreview: NSViewRepresentable {
     let session: AVCaptureSession
     
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        view.wantsLayer = true
-        view.layer?.backgroundColor = NSColor.black.cgColor
-        
-        let previewLayer = AVCaptureVideoPreviewLayer(session: session)
-        previewLayer.name = "cameraPreview"
-        previewLayer.videoGravity = .resizeAspectFill
-        // Don't auto-resize, we handle frame in layout
-        
-        view.layer?.addSublayer(previewLayer)
+    func makeNSView(context: Context) -> PreviewView {
+        let view = PreviewView()
+        view.session = session
         return view
     }
     
-    func updateNSView(_ nsView: NSView, context: Context) {
-        if let layer = nsView.layer?.sublayers?.first(where: { $0.name == "cameraPreview" }) as? AVCaptureVideoPreviewLayer {
-            layer.frame = nsView.bounds
-            // Ensure session is connected if changed (though session is usually constant)
-            if layer.session != session {
-                layer.session = session
+    func updateNSView(_ nsView: PreviewView, context: Context) {
+        if nsView.session != session {
+            nsView.session = session
+        }
+    }
+    
+    class PreviewView: NSView {
+        var videoPreviewLayer: AVCaptureVideoPreviewLayer {
+            guard let layer = layer as? AVCaptureVideoPreviewLayer else {
+                fatalError("Expected `AVCaptureVideoPreviewLayer` type for layer. Check returned layer class.")
             }
+            return layer
+        }
+        
+        var session: AVCaptureSession? {
+            get {
+                return videoPreviewLayer.session
+            }
+            set {
+                videoPreviewLayer.session = newValue
+                print("PreviewView: Session set on layer. Session running? \(newValue?.isRunning == true)")
+            }
+        }
+        
+        override func makeBackingLayer() -> CALayer {
+            let layer = AVCaptureVideoPreviewLayer()
+            layer.name = "cameraPreview"
+            layer.videoGravity = .resizeAspectFill
+            layer.backgroundColor = NSColor.black.cgColor
+            return layer
+        }
+        
+        init() {
+            super.init(frame: .zero)
+            self.wantsLayer = true
+        }
+        
+        required init?(coder: NSCoder) {
+            fatalError("init(coder:) has not been implemented")
         }
     }
 }

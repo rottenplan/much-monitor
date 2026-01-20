@@ -20,6 +20,18 @@ class CalibrationLogic {
     private var ccm: [[Double]]?
     var targetColorSpace: String = "sRGB"
     
+    // Dynamic Baseline
+    private var blackLevel: RGB = RGB(r: 0, g: 0, b: 0)
+    private var whiteLevel: RGB = RGB(r: 255, g: 255, b: 255)
+    private var hasBaseline: Bool = false
+    
+    func setBaseline(black: RGB, white: RGB) {
+        self.blackLevel = black
+        self.whiteLevel = white
+        self.hasBaseline = true
+        print("CalibrationLogic: Baseline Set. Black: \(black.r), White: \(white.r)")
+    }
+    
     func recordSample(target: RGB, measured: RGB, sensorModel: String = "Generic", colorSpace: String = "sRGB") {
         self.targetColorSpace = colorSpace
         // Apply pre-compensation based on sensor model
@@ -28,20 +40,34 @@ class CalibrationLogic {
     }
     
     private func compensateSample(measured: RGB, model: String) -> RGB {
-        // Compensation Offset Strategy
         var r = measured.r
         var g = measured.g
         var b = measured.b
         
-        // 1. Sensor Compensation
+        // 1. DYNAMIC BASELINE COMPENSATION
+        // Formula: Norm = (Measured - Black) / (White - Black) * 255
+        // Ideally, we treat 'white' as the mapped 255 point.
+        
+        if hasBaseline {
+            // Function to map a single channel
+            func mapChannel(_ val: Double, b: Double, w: Double) -> Double {
+                let range = w - b
+                if range < 1.0 { return val } // Avoid div by zero
+                return ((val - b) / range) * 255.0
+            }
+            
+            r = mapChannel(r, b: blackLevel.r, w: whiteLevel.r)
+            g = mapChannel(g, b: blackLevel.g, w: whiteLevel.g)
+            b = mapChannel(b, b: blackLevel.b, w: whiteLevel.b)
+        }
+        
+        // 2. Sensor Compensation (Legacy/Tweaks)
+        // Kept as secondary polish
         if model.contains("iPhone 11") {
             r *= 0.98
             b *= 1.02
         } else if model.contains("iPhone 12") {
             r *= 1.01
-            b *= 0.99
-        } else if model.contains("iPhone 13") || model.contains("iPhone 14") {
-            g *= 0.99
         }
         
         return RGB(r: min(255, max(0, r)), g: min(255, max(0, g)), b: min(255, max(0, b)))
@@ -55,7 +81,7 @@ class CalibrationLogic {
         let targetLum = 0.2126 * target.r + 0.7152 * target.g + 0.0722 * target.b
         let measureLum = 0.2126 * measured.r + 0.7152 * measured.g + 0.0722 * measured.b
         
-        if targetLum > 50 && measureLum < 5 {
+        if targetLum > 50 && measureLum < 1.0 {
             return (false, "Kamera Gelap! (Buka Lensa / Cek Cahaya)")
         }
         
@@ -92,6 +118,7 @@ class CalibrationLogic {
     func reset() {
         samples.removeAll()
         ccm = nil
+        hasBaseline = false
     }
     
     // MARK: - Core Math
@@ -118,7 +145,8 @@ class CalibrationLogic {
         // 2. Solve using Accelerate (LAAPACK dgels)
         // generic linear least squares problem: min || A * X - B ||
         
-        var a = flatA // Flattened Column-Major? Accelerate uses Column-Major mostly, but let's check.
+        // var a = flatA // Flattened Column-Major? Accelerate uses Column-Major mostly, but let's check.
+        _ = flatA
         // Swift arrays are essentially row-major when interpreted as linear, but LAPACK expects Column-Major.
         // We need to transpose A and B because we perform A * X = B.
         // Actually, let's treat it as: Captured_Row * CCM = Target_Row
@@ -164,7 +192,7 @@ class CalibrationLogic {
         // 0. DATA VALIDATION
         // Check if camera was seeing anything at all.
         let maxLuminance = samples.map { $0.measured.r + $0.measured.g + $0.measured.b }.max() ?? 0.0
-        if maxLuminance < 10.0 {
+        if maxLuminance < 5.0 {
             // Signal is essentially Black/Dark. Camera was likely covered or off.
             return [
                 "grade": "INVALID",

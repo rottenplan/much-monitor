@@ -142,6 +142,19 @@ struct ContentView: View {
                                 .frame(maxWidth: .infinity)
                             }
                             
+                            // Sync Logic for Camera Selection
+                            .onAppear {
+                                if let device = appState.cameraManager.selectedDevice {
+                                    selectedCameraID = device.uniqueID
+                                }
+                            }
+                            // Watch for external changes (like auto-selection in Manager)
+                            .onReceive(appState.cameraManager.$selectedDevice) { device in
+                                if let device = device, selectedCameraID != device.uniqueID {
+                                    selectedCameraID = device.uniqueID
+                                }
+                            }
+                            
                             Divider().background(Color.white.opacity(0.1))
                             
                             // 4. Start Button Hint
@@ -166,8 +179,12 @@ struct ContentView: View {
                                 Text("White Point")
                                     .foregroundColor(.white.opacity(0.8))
                                 Picker("", selection: $appState.whitePoint) {
-                                    Text("D65 (6500K)").tag("D65 (6500K)")
-                                    Text("D50 (5000K)").tag("D50 (5000K)")
+                                    Text("D50 (5000K) - Print").tag("D50 (5000K)")
+                                    Text("D55 (5500K)").tag("D55 (5500K)")
+                                    Text("D60 (6000K)").tag("D60 (6000K)")
+                                    Text("D65 (6500K) - Standard").tag("D65 (6500K)")
+                                    Text("D75 (7500K)").tag("D75 (7500K)")
+                                    Text("9300K (Cool)").tag("9300K (Cool)")
                                 }
                                 .labelsHidden()
                             }
@@ -223,7 +240,14 @@ struct ContentView: View {
     }
     
     func launchCompanion() {
-        // Find the absolute path to the python script
+        // 1. Kill any existing instances of menubar_app.py
+        let killTask = Process()
+        killTask.launchPath = "/usr/bin/pkill"
+        killTask.arguments = ["-f", "menubar_app.py"]
+        try? killTask.run()
+        killTask.waitUntilExit()
+        
+        // 2. Find the absolute path to the python script
         // Assuming current structure: .../much-monitor/much-monitor-swift
         // Companion is at: .../much-monitor/much-monitor-python/menubar_helper.py
         
